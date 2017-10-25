@@ -54,7 +54,7 @@ setup(
     license='MIT License',
     description=DESCRIPTION,
     long_description=README,
-    url='https://github.com/KamilBugno/multi-paxos.git',
+    url='https://github.com/roxel/multi-paxos.git',
     author='Piotr Roksela',
     classifiers=[
         'Environment :: Web Environment',
