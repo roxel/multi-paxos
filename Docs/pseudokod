@@ -1,0 +1,44 @@
+//proposer
+Prepare(){
+	N = generateNumerGreaterThanPrevious();
+	value = getValue();
+	for node in quorum:
+		send(node, this.Id, phase.Prepare, operation.Write, N, value);
+}
+
+//acceptor
+Promise(){
+	message = getReceivedMessage();
+	if(message.N > previousNumber.getTheHighestN() && this.isEverAcceptedProposal):
+		send(message.Sender, this.Id, previousNumber.getLatestN(), this.PreviousValue, phase.Promise, operation.Write, message.N);
+		previousNumber.add(message.N);
+}
+
+//proposer
+Accept(){
+	if(receivedMessages.size() >= minRequiredNumberOfNodes):
+		message = receivedMessages.getMessageWithTheHighestN();
+		value = message.value;
+		N = message.N;		
+	else:
+		value = getValue();
+		N = this.N;
+	for node in quorum:
+		send(node, this.Id, phase.AcceptRequest, operation.Write, N, value);
+}
+
+//acceptor
+Accepted(){
+	message = getReceivedMessage();
+	if(previousNumber.getTheHighestN < message.N):
+		value = message.value;
+		send(message.Sender, this.Id, phase.Accepted, operation.Write, value, message.N)
+		for learner in learners:
+			send(learner, this.Id, phase.Accepted, operation.Write, value, message.N)
+}
+
+
+
+
+
+
