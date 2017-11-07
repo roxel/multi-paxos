@@ -29,3 +29,4 @@ Simple distributed key-value store using multi-paxos consensus protocol.
     message = Message(issuer_id='1', message_type=Message.MSG_READ)
     node.send_message(message)
 ```
+* Servers automatically process messages based on their type. Messages are passed to `paxos.protocol.PaxosHandler` and appropriate handler methods are invoked, e.g. 'on_prepare', 'on_promise'.

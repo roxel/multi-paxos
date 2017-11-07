@@ -38,4 +38,3 @@ class PaxosHandler(object):
 
     def on_accepted(self):
         pass
-
