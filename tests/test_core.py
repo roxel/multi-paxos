@@ -26,7 +26,7 @@ class MessageTest(TestCase):
         self.assertEqual(s, b'{"issuer_id": "3", "message_type": "read", "key": "xyz"}')
 
     def test_unserialize(self):
-        s = b'{"issuer_id": "1", "message_type": "propose", "key": "123"}'
+        s = b'{"issuer_id": "1", "message_type": "prepare", "key": "123"}'
         msg = Message.unserialize(s)
         self.assertEqual(msg.issuer_id, '1')
         self.assertEqual(msg.message_type, Message.MSG_PREPARE)
