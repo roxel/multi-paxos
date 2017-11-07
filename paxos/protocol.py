@@ -1,6 +1,5 @@
 from paxos.core import Message
 
-
 class PaxosHandler(object):
     """
     Process Paxos protocol messages received by server.
@@ -13,8 +12,10 @@ class PaxosHandler(object):
         Message.MSG_ACCEPTED: 'on_accepted',
     }
 
-    def __init__(self, message):
+    def __init__(self, message, server):
         self.message = message
+        self.server = server
+
 
     def process(self):
         function_name = PaxosHandler.HANDLER_FUNCTIONS[self.message.message_type]
@@ -28,7 +29,12 @@ class PaxosHandler(object):
         pass
 
     def on_prepare(self):
-        pass
+        """
+        message_type=Message.MSG_PREPARE,
+        sender_id=self.id,
+        prop_num={natural number}
+        """
+        prop_num = self.message.prop_num
 
     def on_promise(self):
         pass

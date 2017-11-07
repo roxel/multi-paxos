@@ -2,13 +2,6 @@ import socket
 import json
 from threading import Lock
 
-def synchronized(fn):
-    _lock = Lock()
-    def wrapper():
-        with _lock:
-            fn()
-    return wrapper
-
 def string_to_address(address):
     """
     Change string representation of server address, e.g. 127.0.0.1:9999 to host, port tuple needed for socket API.
@@ -87,6 +80,7 @@ class Message(object):
 
     MSG_READ = 'read'
     MSG_PREPARE = 'prepare'
+    MSG_PREPARE_NACK = 'prepare-nack'
     MSG_PROMISE = 'promise'
     MSG_ACCEPT_REQUEST = 'accept'
     MSG_ACCEPTED = 'accepted'

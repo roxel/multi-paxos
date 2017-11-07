@@ -1,14 +1,16 @@
 import socketserver
-from paxos.core import Participant, string_to_address, address_to_node_id, Message, Node, synchronized
+from paxos.core import Participant, string_to_address, \
+    address_to_node_id, Message, Node
 from paxos.protocol import PaxosHandler
-from threading import Timer
+from threading import Timer, Lock
 from time import sleep
 import random
 
 
+
 class Server(Participant):
-    HEARTBEAT_PERIOD = 2
-    HEARTBEAT_TIMEOUT = 3 * HEARTBEAT_PERIOD
+    HEARTBEAT_PERIOD = 1
+    HEARTBEAT_TIMEOUT = 2 * HEARTBEAT_PERIOD
 
     def get_randomized_timeout():
         """
@@ -23,7 +25,12 @@ class Server(Participant):
         self.host, self.port = string_to_address(address)
         self.id = address_to_node_id(self.servers, self.address)
 
-        self._highest_ballot_number = None
+        self._prop_num_lock = Lock()
+        self._leader_id_lock = Lock()
+        self._last_value_lock = Lock()
+        self._prepare_responses_lock = Lock()
+
+        self._highest_prop_num = None
         self._leader_id = None
         self._last_value = None
         self._prepare_responses = []
@@ -33,14 +40,12 @@ class Server(Participant):
             Server.get_randomized_timeout(),
             self.handle_heartbeat_timeout)
         
-        self.nodes = []
+        self.nodes = {}
         for idx, address in enumerate(self.servers):
             if (idx != self.id):
-                self.nodes.append(
-                        Node(address=address, node_id=address_to_node_id(self.servers, address))
-                    )
+                self.nodes[idx] = Node(address=address, node_id=idx)
+
         self.heartbeat_timeout_timer.start()
-        
 
     def handle_heartbeat_timeout(self):
         """
@@ -48,11 +53,10 @@ class Server(Participant):
         to check if there is a stable leader 
         """    
         print("Hearbeat timeout has passed!")
-        print("Sending fake Prepare messages")
         low_ballot_prepare = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
-            ballot_n="(-1,-1)"
+            prop_num="(-1,-1)"
         )
         for node in self.nodes:
             node.send_message(low_ballot_prepare)
@@ -61,9 +65,9 @@ class Server(Participant):
         Wait a while for NACK messages to come
         and check if there is a stable leader
         """
-        (Timer(Server.HEARTBEAT_PERIOD, handle_low_ballot_checking)).start()
+        (Timer(Server.HEARTBEAT_PERIOD, self.handle_low_ballot_check)).start()
         
-    def handle_low_ballot_checking(self):
+    def handle_low_ballot_check(self):
         """
         Count reported leader IDs and heartbeat numbers 
         to find out, if there is a stable leader
@@ -73,17 +77,62 @@ class Server(Participant):
     def send_heartbeats(self):
         pass
 
+    """
+    Synchronized accessors
+    """
+
+    def get_highest_prop_num(self):
+        with (self._prop_num_lock):
+            return self._highest_prop_num
+
+    def set_highest_prop_num(self, prop_num):
+        with (self._prop_num_lock):
+            self._highest_prop_num = prop_num
+
+    def get_last_value(self):
+        with (self._last_value_lock):
+            return self._last_value
+
+    def set_last_value(self, value):
+        with (self._last_value_lock):
+            self._last_value = value
+
+    def get_leader_id(self):
+        with (self._leader_id_lock):
+            return self._leader_id
+
+    def set_leader_id(self, leader_id):
+        with (self._leader_id_lock):
+            self._leader_id = leader_id
+
+    def get_prepare_responses(self):
+        with (self._prepare_responses_lock):
+            return self._prepare_responses
+
+    def set_prepare_responses(self, prepare_responses):
+        with (self._prepare_responses_lock):
+            self._prepare_responses = prepare_responses
+
+    """
+    """
+
+    def answer_to(self, message, node_id):
+        self.nodes[node_id].send(message)
+
     def run(self):
         print("Starting server {}".format(self.id))
-        server = socketserver.TCPServer((self.host, self.port), Server.TCPHandler)
+        server = socketserver.TCPServer((self.host, self.port), Server.TCPHandler(self))
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             print("Terminating server {}".format(self.id))
 
     class TCPHandler(socketserver.BaseRequestHandler):
+        def __init__(self, server):
+            self.server = server
+
         def handle(self):
             print("Received message from %s:%s" % (self.client_address[0], self.client_address[1]))
             self.data = self.request.recv(1024).strip()
             self.request.sendall(b'ok')
-            PaxosHandler(Message.unserialize(self.data)).process()
+            PaxosHandler(Message.unserialize(self.data), self.server).process()
