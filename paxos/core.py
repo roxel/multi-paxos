@@ -1,6 +1,5 @@
 import socket
 import json
-from threading import Lock
 
 def string_to_address(address):
     """

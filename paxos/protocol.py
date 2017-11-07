@@ -7,6 +7,7 @@ class PaxosHandler(object):
     HANDLER_FUNCTIONS = {
         Message.MSG_READ: 'on_read',
         Message.MSG_PREPARE: 'on_prepare',
+        Message.MSG_PREPARE_NACK: 'on_prepare_nack',
         Message.MSG_PROMISE: 'on_promise',
         Message.MSG_ACCEPT_REQUEST: 'on_accept_request',
         Message.MSG_ACCEPTED: 'on_accepted',
@@ -15,7 +16,6 @@ class PaxosHandler(object):
     def __init__(self, message, server):
         self.message = message
         self.server = server
-
 
     def process(self):
         function_name = PaxosHandler.HANDLER_FUNCTIONS[self.message.message_type]
@@ -35,6 +35,25 @@ class PaxosHandler(object):
         prop_num={natural number}
         """
         prop_num = self.message.prop_num
+        last_prop_num = self.server.get_highest_prop_num()
+        message = None
+
+        if (prop_num > last_prop_num):
+                message = Message(message_type=Message.MSG_PROMISE,
+                sender_id=self.server.id,
+                prop_num=prop_num
+            )
+        else:
+            message = Message(message_type=Message.MSG_PREPARE_NACK,
+                sender_id=self.server.id,
+                prop_num=prop_num,
+                leader_id=self.server.get_leader_id(),
+                last_heartbeat=self.server.get_last_heartbeat()
+            )
+        self.server.answer_to(message, node_id=self.message.sender_id)
+
+    def on_prepare_nack(self):
+        print("NACK")
 
     def on_promise(self):
         pass
