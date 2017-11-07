@@ -1,6 +1,7 @@
 import socketserver
 from paxos.core import Participant, string_to_address, address_to_node_id, Message
 from paxos.protocol import PaxosHandler
+from threading import Timer
 
 
 class Server(Participant):
@@ -9,6 +10,19 @@ class Server(Participant):
         self.address = address
         self.host, self.port = string_to_address(address)
         self.id = address_to_node_id(self.servers, self.address)
+
+        self.heartbeat_timeout_timer = 
+        self.send_heartbeat_timer = None
+        self.highest_ballot_number = None
+        self.leader_id = None
+        self.last_value = None
+        self.nodes = []
+        
+        for idx, address in enumerate(self.servers):
+            if (idx != self.id):
+                self.nodes.append(
+                        Node(address=address, node_id=address_to_node_id(self.servers, address))
+                    )
 
     def run(self):
         print("Starting server {}".format(self.id))
