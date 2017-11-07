@@ -23,13 +23,15 @@ class Server(StoreMixin, Participant):
         self.id = address_to_node_id(self.servers, self.address)
 
         self._prop_num_lock = Lock()
-        self._leader_id_lock = Lock()
+        self._last_heartbeat_lock = Lock()
         self._last_value_lock = Lock()
+        self._leader_id_lock = Lock()
         self._prepare_responses_lock = Lock()
 
-        self._highest_prop_num = None
+        self._highest_prop_num = 0
+        self._last_heartbeat = 0
+        self._last_value = 0
         self._leader_id = None
-        self._last_value = None
         self._prepare_responses = []
 
         self.send_heartbeat_timer = None
@@ -53,9 +55,9 @@ class Server(StoreMixin, Participant):
         low_ballot_prepare = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
-            prop_num="(-1,-1)"
+            prop_num=-1
         )
-        for node in self.nodes:
+        for node in self.nodes.values():
             node.send_message(low_ballot_prepare)
         
         """
@@ -110,26 +112,36 @@ class Server(StoreMixin, Participant):
         with (self._prepare_responses_lock):
             self._prepare_responses = prepare_responses
 
+    def get_last_heartbeat(self):
+        with (self._last_heartbeat_lock):
+            return self._last_heartbeat
+
+    def set_last_heartbeat(self, heartbeat):
+        with (self._last_heartbeat_lock):
+            self._last_heartbeat = heartbeat
+
     """
     """
 
     def answer_to(self, message, node_id):
-        self.nodes[node_id].send(message)
+        self.nodes[node_id].send_message(message)
 
     def run(self):
         print("Starting server {}".format(self.id))
-        server = socketserver.TCPServer((self.host, self.port), Server.TCPHandler(self))
+        server = Server.CustomTCPServer((self.host, self.port), Server.TCPHandler, self)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             print("Terminating server {}".format(self.id))
 
-    class TCPHandler(socketserver.BaseRequestHandler):
-        def __init__(self, server):
-            self.server = server
+    class CustomTCPServer(socketserver.TCPServer):
+        def __init__(self, server_address, RequestHandlerClass, paxos_server, bind_and_activate=True):
+            self.paxos_server = paxos_server
+            socketserver.TCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=True)
 
+    class TCPHandler(socketserver.BaseRequestHandler):
         def handle(self):
             print("Received message from %s:%s" % (self.client_address[0], self.client_address[1]))
             self.data = self.request.recv(1024).strip()
             self.request.sendall(b'ok')
-            PaxosHandler(Message.unserialize(self.data), self.server).process()
+            PaxosHandler(Message.unserialize(self.data), self.server.paxos_server).process()
