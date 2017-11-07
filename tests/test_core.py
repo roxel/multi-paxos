@@ -29,5 +29,5 @@ class MessageTest(TestCase):
         s = b'{"issuer_id": "1", "message_type": "propose", "key": "123"}'
         msg = Message.unserialize(s)
         self.assertEqual(msg.issuer_id, '1')
-        self.assertEqual(msg.message_type, Message.MSG_PROPOSE)
+        self.assertEqual(msg.message_type, Message.MSG_PREPARE)
         self.assertEqual(msg.key, '123')

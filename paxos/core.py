@@ -15,6 +15,10 @@ def string_to_address(address):
     return host, port
 
 
+def address_to_node_id(servers, address):
+    return servers.index(address)
+
+
 class Participant(object):
     """
     Base class for all participating processes: servers and clients.
@@ -45,17 +49,17 @@ class Node(object):
         self.node_id = node_id
 
     def _send_on_socket(self, sock, data):
-        received = None
+        received = 'err'
         try:
             # Connect to server and send data
             sock.connect(string_to_address(self.address))
-            sock.sendall()
+            sock.sendall(data)
 
             # Receive data from the server and shut down
             received = str(sock.recv(1024), "utf-8")
-            print('received: %s' % received)
-        except ConnectionRefusedError as e:
-            print('socket not available: %s' % e)
+            print('%s –> %s' % (self.address, received))
+        except ConnectionRefusedError:
+            print('%s –> %s' % (self.address, received))
         finally:
             sock.close()
         return received
@@ -75,9 +79,9 @@ class Message(object):
     """
 
     MSG_READ = 'read'
-    MSG_PROPOSE = 'propose'
+    MSG_PREPARE = 'prepare'
     MSG_PROMISE = 'promise'
-    MSG_ACCEPT = 'accept'
+    MSG_ACCEPT_REQUEST = 'accept'
     MSG_ACCEPTED = 'accepted'
 
     def __init__(self, **kwargs):

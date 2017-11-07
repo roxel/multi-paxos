@@ -1,17 +1,14 @@
 import socketserver
-from paxos.core import Participant, string_to_address
+from paxos.core import Participant, string_to_address, address_to_node_id, Message
+from paxos.protocol import PaxosHandler
 
 
 class Server(Participant):
-    """
-
-    """
-
     def __init__(self, address, *args, **kwargs):
         super(Server, self).__init__(*args, **kwargs)
         self.address = address
         self.host, self.port = string_to_address(address)
-        self.id = self.servers.index(self.address)
+        self.id = address_to_node_id(self.servers, self.address)
 
     def run(self):
         print("Starting server {}".format(self.id))
@@ -26,3 +23,4 @@ class Server(Participant):
             print("Received message from %s:%s" % (self.client_address[0], self.client_address[1]))
             self.data = self.request.recv(1024).strip()
             self.request.sendall(b'ok')
+            PaxosHandler(Message.unserialize(self.data)).process()

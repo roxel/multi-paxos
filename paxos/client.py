@@ -1,17 +1,22 @@
 import datetime
 from time import time
 
-from paxos.core import Participant, Message, Node
+from paxos.core import Participant, Message, Node, address_to_node_id
 
 
 class Client(Participant):
     """
     Client participating in read, write operations.
     """
+
     def run(self, key, value=None):
+        """
+        Run one time operation to read or write to other nodes.
+        """
         start_time = datetime.datetime.now()
         print("Starting client at {}".format(start_time))
         # should find leader here
+        self.select_leader()
         if value:
             self.write(key, value)
         else:
@@ -31,6 +36,11 @@ class Client(Participant):
         """
         Initiate communication with nodes and find leader/proposer for direct connection with him.
         """
-        leader = Node(address='127.0.0.1:9999')         # TODO: algorithm
-        message = Message(issuer_id='0', message_type=Message.MSG_READ)
-        return leader
+        # TODO: implement leader selection algorithm
+        for address in self.servers:
+            node = Node(address=address, node_id=address_to_node_id(self.servers, address))
+            message = Message(issuer_id='0', message_type=Message.MSG_READ)
+            node.send_message(message)
+
+        self.leader = None
+        return self.leader
