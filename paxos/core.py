@@ -1,6 +1,13 @@
 import socket
 import json
+from threading import Lock
 
+def synchronized(fn):
+    _lock = Lock()
+    def wrapper():
+        with _lock:
+            fn()
+    return wrapper
 
 def string_to_address(address):
     """
