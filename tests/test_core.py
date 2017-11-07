@@ -1,9 +1,17 @@
-from unittest import TestCase
-from paxos.core import Message
+import socket
+from unittest import TestCase, mock
+from paxos.core import Message, Node
 
 
 class CoreTest(TestCase):
-    pass
+
+    @mock.patch('paxos.core.Node._send_on_socket')
+    def test_send_message_through_node(self, mock_socket):
+        mock_socket.return_value = b'ok'
+        node = Node(address='127.0.0.1:9999', node_id='99')
+        message = Message(issuer_id='1', message_type=Message.MSG_READ)
+        response = node.send_message(message)
+        self.assertEqual(response, b'ok')
 
 
 class NodeTest(TestCase):
