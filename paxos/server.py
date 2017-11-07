@@ -9,7 +9,7 @@ import random
 
 
 class Server(Participant):
-    HEARTBEAT_PERIOD = 1
+    HEARTBEAT_PERIOD = 5
     HEARTBEAT_TIMEOUT = 2 * HEARTBEAT_PERIOD
 
     def get_randomized_timeout():
@@ -24,6 +24,7 @@ class Server(Participant):
         self.address = address
         self.host, self.port = string_to_address(address)
         self.id = address_to_node_id(self.servers, self.address)
+        self.quorum_size = self.initial_participants // 2 + 1
 
         self._prop_num_lock = Lock()
         self._last_heartbeat_lock = Lock()
@@ -49,32 +50,93 @@ class Server(Participant):
 
         self.heartbeat_timeout_timer.start()
 
+    def answer_to(self, message, node_id):
+        self.nodes[node_id].send_message(message)
+
     def handle_heartbeat_timeout(self):
         """
         First send a test Prepare with low ballot number
         to check if there is a stable leader 
         """    
-        print("Hearbeat timeout has passed!")
-        low_ballot_prepare = Message(
+        print("Hearbeat timeout!")
+        low_prop_num_prepare_msg = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
             prop_num=-1
         )
         for node in self.nodes.values():
-            node.send_message(low_ballot_prepare)
+            node.send_message(low_prop_num_prepare_msg)
         
         """
         Wait a while for NACK messages to come
         and check if there is a stable leader
         """
-        (Timer(Server.HEARTBEAT_PERIOD, self.handle_low_ballot_check)).start()
+        Timer(Server.HEARTBEAT_PERIOD, self.handle_low_prop_num).start()
         
-    def handle_low_ballot_check(self):
+    
+    def handle_low_prop_num(self):
         """
         Count reported leader IDs and heartbeat numbers 
         to find out, if there is a stable leader
+        prepare_responses = [(leader_id, last_heartbeat)...]
         """
-        pass
+        with (self._prepare_responses_lock):
+            leaders = {}
+            heartbeats = {}
+            print(self._prepare_responses)
+            for leader, heartbeat in self._prepare_responses:
+                if (leader not in leaders):
+                    leaders[leader] = 1
+                else:
+                    leaders[leader] += 1
+                if (heartbeat not in heartbeats):
+                    heartbeats[heartbeat] = 1
+                else:
+                    heartbeats[heartbeat] += 1
+        leader = sorted(leaders.items(), key=lambda e: e[1])[0]
+        heartbeat = sorted(heartbeats.items(), key=lambda e: e[1])[0]
+        self.clear_prepare_responses()
+        
+        if (leader[1] >= self.quorum_size 
+                and heartbeat[1] >= self.quorum_size
+                and heartbeat[0] > self.get_last_heartbeat()):
+            """
+            Other nodes are connected with a stable leader
+            so let's stop the election process and reset 
+            the heartbeat timer
+            """
+            print("A stable leader detected. Stopping election")
+            print(leader)
+            self.heartbeat_timeout_timer().cancel
+            self.heartbeat_timeout_timer(Server.HEARTBEAT_TIMEOUT, self.handle_heartbeat_timeout)
+            self.heartbeat_timeout_timer.start()
+            return
+        else:
+            """
+            There is no stable leader
+            let's send proper Prepare messages
+            """
+            print("No stable leader detected. Starting election")
+            prepare_msg = Message(message_type=Message.MSG_PREPARE,
+                sender_id=self.id,
+                prop_num=self.next_proposal_num()
+            )
+            for node in self.nodes.values():
+                node.send_message(prepare_msg)
+            Timer(Server.HEARTBEAT_TIMEOUT, self.handle_prepare_responses).start()
+
+    def handle_prepare_responses(self):
+        """
+        Count received Promises and Nacks.
+        If a leader is pointed to in at least
+        {quorum_size} cases, set a leader
+        and reset the heartbeat timer
+        """
+        pass        
+
+
+    def next_proposal_num(self):
+        return 0
     
     def send_heartbeats(self):
         pass
@@ -107,14 +169,6 @@ class Server(Participant):
         with (self._leader_id_lock):
             self._leader_id = leader_id
 
-    def get_prepare_responses(self):
-        with (self._prepare_responses_lock):
-            return self._prepare_responses
-
-    def set_prepare_responses(self, prepare_responses):
-        with (self._prepare_responses_lock):
-            self._prepare_responses = prepare_responses
-
     def get_last_heartbeat(self):
         with (self._last_heartbeat_lock):
             return self._last_heartbeat
@@ -123,11 +177,24 @@ class Server(Participant):
         with (self._last_heartbeat_lock):
             self._last_heartbeat = heartbeat
 
-    """
-    """
+    def get_prepare_responses(self):
+        with (self._prepare_responses_lock):
+            return self._prepare_responses
 
-    def answer_to(self, message, node_id):
-        self.nodes[node_id].send_message(message)
+    def set_prepare_responses(self, prepare_responses):
+        with (self._prepare_responses_lock):
+            self._prepare_responses = prepare_responses
+
+    def append_prepare_responses(self, res):
+        with (self._prepare_responses_lock):
+            self._prepare_responses.append(res)
+
+    def clear_prepare_responses(self):
+        with (self._prepare_responses_lock):
+            self._prepare_responses = []
+
+    """
+    """
 
     def run(self):
         print("Starting server {}".format(self.id))
