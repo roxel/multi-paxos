@@ -53,11 +53,10 @@ class PaxosHandler(object):
         self.server.answer_to(message, node_id=self.message.sender_id)
 
     def on_prepare_nack(self):
-        res = (self.message.leader_id, self.message.last_heartbeat)
-        self.server.append_prepare_responses(res)
+        self.server.append_prepare_responses(self.message)
 
     def on_promise(self):
-        pass
+        self.server.append_prepare_responses(self.message)
 
     def on_accept_request(self):
         pass
