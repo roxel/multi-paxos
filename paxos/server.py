@@ -20,6 +20,7 @@ class Server(StoreMixin, Participant):
         self.tcp_daemon = None
 
         self._prop_num_lock = Lock()
+        self._own_prop_num_lock = Lock()
         self._last_heartbeat_lock = Lock()
         self._last_value_lock = Lock()
         self._leader_id_lock = Lock()
@@ -27,6 +28,7 @@ class Server(StoreMixin, Participant):
         self._heartbeat_timeout_lock = Lock()
 
         self._highest_prop_num = ProposalNumber(self.id, 0)
+        self._own_prop_num = ProposalNumber(self.id, 0)
         self._last_heartbeat = 0
         self._last_value = 0
         self._leader_id = None
@@ -106,10 +108,6 @@ class Server(StoreMixin, Participant):
 
         return top_leader, top_leader_occurrences, top_heartbeat, heartbeat_occurrences
 
-    def count_promises(self):
-        promises = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PROMISE)]
-        return len(promises)
-
     def handle_low_prop_num(self):
         """
         Count reported leader IDs and heartbeat numbers
@@ -145,18 +143,10 @@ class Server(StoreMixin, Participant):
             be set as leader after receiving its
             heartbeat
             """
-            self.next_proposal_num()
             self.send_heartbeats()
 
     def handle_heartbeat(self, message):
-        """
-        heartbeat=self.next_heartbeat(),
-        sender_id=self.id
-        prop_num=(id, round_no)
-        """
-
-        prop_num = ProposalNumber.from_tuple(message.prop_num)
-        if prop_num >= self.get_highest_prop_num():
+        if message.sender_id > self.id:
             print('[Heartbeat from {}]'.format(message.sender_id))
             if self.send_heartbeat_timer and self.send_heartbeat_timer.is_alive():
                 self.send_heartbeat_timer.cancel()
@@ -167,9 +157,12 @@ class Server(StoreMixin, Participant):
                 self.handle_heartbeat_timeout)
 
     def next_proposal_num(self):
-        with self._prop_num_lock:
-            self._highest_prop_num = ProposalNumber(self.id, self._highest_prop_num.round_no + 1)
-            return self._highest_prop_num
+        with self._own_prop_num_lock:
+            with self._prop_num_lock:
+                self._own_prop_num = ProposalNumber(self.id, self._own_prop_num.round_no + 1)
+                if self._own_prop_num > self._highest_prop_num:
+                    self._highest_prop_num = self._own_prop_num
+                return self._highest_prop_num
 
     def next_heartbeat(self):
         return time.time()
@@ -177,7 +170,6 @@ class Server(StoreMixin, Participant):
     def send_heartbeats(self):
         heartbeat = Message(
             message_type=Message.MSG_HEARTBEAT,
-            prop_num=self.get_highest_prop_num().as_tuple(),
             heartbeat=self.next_heartbeat(),
             sender_id=self.id
         )
@@ -196,6 +188,14 @@ class Server(StoreMixin, Participant):
     def set_highest_prop_num(self, prop_num):
         with self._prop_num_lock:
             self._highest_prop_num = prop_num
+
+    def get_own_prop_num(self):
+        with self._prop_num_lock:
+            return self._own_prop_num
+
+    def set_own_prop_num(self, prop_num):
+        with self._prop_num_lock:
+            self._own_prop_num = prop_num
 
     def get_last_value(self):
         with self._last_value_lock:
