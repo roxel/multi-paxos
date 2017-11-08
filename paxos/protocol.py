@@ -87,7 +87,7 @@ class PaxosHandler(object):
         prop_num = ProposalNumber.from_tuple(prop_tuple)
         last_prop_num = self.server.get_highest_prop_num()
         message = None
-
+        
         if (prop_num > last_prop_num):
             message = Message(message_type=Message.MSG_PROMISE,
                 sender_id=self.server.id,
@@ -114,4 +114,5 @@ class PaxosHandler(object):
         pass
 
     def on_heartbeat(self):
-        pass
+        self.server.handle_heartbeat(self.message)
+        

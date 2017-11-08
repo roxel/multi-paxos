@@ -80,7 +80,7 @@ class Node(object):
 
             # Receive data from the server and shut down
             received = str(sock.recv(1024), "utf-8")
-            print('%s –> %s' % (self.address, received))
+            # print('%s –> %s' % (self.address, received))
         except ConnectionRefusedError:
             print('%s –> %s' % (self.address, received))
         finally:

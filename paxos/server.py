@@ -5,18 +5,19 @@ from paxos.protocol import PaxosHandler, ProposalNumber
 from threading import Timer, Lock
 from time import sleep
 import random
+import time
 
 
 class Server(StoreMixin, Participant):
-    HEARTBEAT_PERIOD = 5
-    HEARTBEAT_TIMEOUT = 2 * HEARTBEAT_PERIOD
+    HEARTBEAT_PERIOD = 1
+    HEARTBEAT_TIMEOUT = 4 * HEARTBEAT_PERIOD
 
     def get_randomized_timeout():
         """
         Wait for an addtional random period in order to
         minimize the risk of selecting multiple leaders
         """
-        return Server.HEARTBEAT_TIMEOUT + int(random.random() * Server.HEARTBEAT_PERIOD)
+        return Server.HEARTBEAT_TIMEOUT + int(random.random() * Server.HEARTBEAT_TIMEOUT)
 
     def __init__(self, address, *args, **kwargs):
         super(Server, self).__init__(*args, **kwargs)
@@ -31,6 +32,7 @@ class Server(StoreMixin, Participant):
         self._last_value_lock = Lock()
         self._leader_id_lock = Lock()
         self._prepare_responses_lock = Lock()
+        self._heartbeat_timeout_lock = Lock()
 
         self._highest_prop_num = ProposalNumber(self.id, 0)
         self._last_heartbeat = 0
@@ -39,15 +41,15 @@ class Server(StoreMixin, Participant):
         self._prepare_responses = []
 
         self.send_heartbeat_timer = None
-        self.heartbeat_timeout_timer = Timer(
-            Server.get_randomized_timeout(),
-            self.handle_heartbeat_timeout)
+        self.heartbeat_timeout_timer = None
         
         self.nodes = {}
         for idx, address in enumerate(self.servers):
             if (idx != self.id):
                 self.nodes[idx] = Node(address=address, node_id=idx)
-        self.heartbeat_timeout_timer.start()
+        self.reset_heartbeat_timeout_timer(
+            Server.get_randomized_timeout(),
+            self.handle_heartbeat_timeout)
 
     def answer_to(self, message, node_id):
         self.nodes[node_id].send_message(message)
@@ -63,21 +65,27 @@ class Server(StoreMixin, Participant):
             sender_id=self.id,
             prop_num=ProposalNumber.get_lowest_possible().as_tuple()
         )
-        for node in self.nodes.values():
-            node.send_message(low_prop_num_prepare_msg)
+        for id, node in self.nodes.items():
+            """
+            If there is no heartbeat signal from
+            the leader node, don't send messages
+            to it
+            """
+            if (id != self.get_leader_id()):
+                node.send_message(low_prop_num_prepare_msg)
         
         """
         Wait a while for NACK messages to come
         and check if there is a stable leader
         """
-        Timer(Server.HEARTBEAT_PERIOD, self.handle_low_prop_num).start()
+        self.reset_heartbeat_timeout_timer(
+                Server.HEARTBEAT_PERIOD, 
+                self.handle_low_prop_num)
     
     def count_nacks(self):
-        with (self._prepare_responses_lock):
-            nacks = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PREPARE_NACK)]
-            self._prepare_responses = []
-        
+        nacks = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PREPARE_NACK)]
         top_leader, top_leader_occurrences, top_heartbeat, heartbeat_occurrences = (None,) * 4
+        
         if (len(nacks) > 0):
             leader_heartbeats = {}
             leader_occurrences = {}
@@ -102,42 +110,50 @@ class Server(StoreMixin, Participant):
 
         return top_leader, top_leader_occurrences, top_heartbeat, heartbeat_occurrences
 
+    def count_promises(self):
+        promises = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PROMISE)]
+        return len(promises)
+
     def handle_low_prop_num(self):
         """
         Count reported leader IDs and heartbeat numbers 
         to find out, if there is a stable leader
         prepare_responses = [(leader_id, last_heartbeat)...]
         """
-        top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = self.count_nacks()
 
-        if (leader_occurrences >= self.quorum_size 
+        print("[Low-ball Prepare] Counting low-ball responses")
+        with (self._prepare_responses_lock):
+            top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = self.count_nacks()
+            self._prepare_responses = []
+
+        if (top_leader is not None
+                and leader_occurrences >= self.quorum_size 
                 and heartbeat_occurrences >= self.quorum_size):
             """
             Other nodes are connected with a stable leader
             so let's stop the election process and reset 
             the heartbeat timer
             """
-            print("A stable leader detected. Stopping election")
-            self.heartbeat_timeout_timer.cancel()
-            self.heartbeat_timeout_timer = Timer(Server.get_randomized_timeout(), self.handle_heartbeat_timeout)
-            self.heartbeat_timeout_timer.start()
-            return
+            print("[Low-ball Prepare] A stable leader detected. Stopping election")
+            self.set_leader_id(top_leader)
+            self.reset_heartbeat_timeout_timer(
+                Server.get_randomized_timeout(),
+                self.handle_heartbeat_timeout)
         else:
             """
             There is no stable leader
             Let's send proper Prepare messages
             """
-            print('No stable leader detected. Starting election')
+            print('[Low-ball Prepare] No stable leader detected. Starting election')
             prepare_msg = Message(message_type=Message.MSG_PREPARE,
                 sender_id=self.id,
                 prop_num=self.next_proposal_num().as_tuple()
             )
             for node in self.nodes.values():
                 node.send_message(prepare_msg)
-            Timer(Server.HEARTBEAT_TIMEOUT, self.handle_prepare_responses).start()
-
-    def count_promises(self):
-        pass
+            
+            self.reset_heartbeat_timeout_timer(
+                Server.HEARTBEAT_PERIOD, self.handle_prepare_responses)
 
     def handle_prepare_responses(self):
         """
@@ -146,16 +162,77 @@ class Server(StoreMixin, Participant):
         {quorum_size} cases, set a leader
         and reset the heartbeat timer
         """
-        pass        
 
+        print("[Real Prepare] Counting Promises and NACKs")
+        with (self._prepare_responses_lock):
+            promises_no = self.count_promises()
+            top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = self.count_nacks()
+            self._prepare_responses = []
+
+        if (promises_no >= self.quorum_size):
+            print('This server [ID: {}] is the new leader'.format(self.id))
+            print('Starting sending heartbeats')
+
+            self.heartbeat_timeout_timer = None
+            self.set_leader_id(self.id)
+            self.send_heartbeat_timer = Timer(Server.HEARTBEAT_PERIOD, self.send_heartbeats)
+            self.send_heartbeat_timer.start()
+
+        else:
+            """
+            Server hasn't obtained enough votes
+            Let's check if the NACKS contain information
+            about a a stable leader
+            """
+            if (top_leader is not None
+                    and leader_occurrences >= self.quorum_size 
+                    and heartbeat_occurrences >= self.quorum_size):
+                print('[Real Prepare] A stable leader detected. Stopping election')
+                self.set_leader_id(top_leader)
+            else:
+                print('[Real Prepare] No leader has been elected. Restarting the election process')
+            self.reset_heartbeat_timeout_timer(
+                Server.get_randomized_timeout(),
+                self.handle_heartbeat_timeout)
+
+    def handle_heartbeat(self, message):
+        """
+        heartbeat=self.next_heartbeat(),
+        sender_id=self.id
+        prop_num=(id, round_no)
+        """
+
+        prop_num = ProposalNumber.from_tuple(message.prop_num)
+        if (prop_num >= self.get_highest_prop_num()):
+            print('[Heartbeat from {}]'.format(message.sender_id))
+            if (self.send_heartbeat_timer and self.send_heartbeat_timer.is_alive()):
+                self.send_heartbeat_timer.cancel()
+            self.set_last_heartbeat(message.heartbeat)
+            self.set_leader_id(message.sender_id)
+            self.reset_heartbeat_timeout_timer(
+                    Server.get_randomized_timeout(),
+                    self.handle_heartbeat_timeout)
 
     def next_proposal_num(self):
         with self._prop_num_lock:
             self._highest_prop_num = ProposalNumber(self.id, self._highest_prop_num.round_no + 1)
             return self._highest_prop_num
 
+    def next_heartbeat(self):
+        return time.time()
+
     def send_heartbeats(self):
-        pass
+        heartbeat = Message(
+            message_type=Message.MSG_HEARTBEAT,
+            prop_num=self.get_highest_prop_num().as_tuple(),
+            heartbeat=self.next_heartbeat(),
+            sender_id=self.id
+        )
+        for node in self.nodes.values():
+            node.send_message(heartbeat)
+            
+        self.send_heartbeat_timer = Timer(Server.HEARTBEAT_PERIOD, self.send_heartbeats)
+        self.send_heartbeat_timer.start()
 
     """
     Synchronized accessors
@@ -204,10 +281,19 @@ class Server(StoreMixin, Participant):
     def append_prepare_responses(self, res):
         with (self._prepare_responses_lock):
             self._prepare_responses.append(res)
+            print("Received a response to a Prepare message")
 
     def clear_prepare_responses(self):
         with (self._prepare_responses_lock):
             self._prepare_responses = []
+
+    def reset_heartbeat_timeout_timer(self, timeout, job):
+        with (self._heartbeat_timeout_lock):
+            if (self.heartbeat_timeout_timer and self.heartbeat_timeout_timer.is_alive()):
+                self.heartbeat_timeout_timer.cancel()
+            self.heartbeat_timeout_timer = Timer(timeout, job)
+            self.heartbeat_timeout_timer.start()
+
 
     """
     """
@@ -219,6 +305,7 @@ class Server(StoreMixin, Participant):
             self.tcp_daemon.serve_forever()
         except KeyboardInterrupt:
             print("Terminating server {}".format(self.id))
+            self.shutdown()
 
     def shutdown(self):
         if (self.tcp_daemon):
@@ -235,7 +322,7 @@ class Server(StoreMixin, Participant):
 
     class TCPHandler(socketserver.BaseRequestHandler):
         def handle(self):
-            print("Received message from %s:%s" % (self.client_address[0], self.client_address[1]))
+            # print("Received message from %s:%s" % (self.client_address[0], self.client_address[1]))
             self.data = self.request.recv(1024).strip()
             self.request.sendall(b'ok')
             PaxosHandler(Message.unserialize(self.data), self.server.paxos_server).process()
