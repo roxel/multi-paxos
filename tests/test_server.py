@@ -2,6 +2,7 @@ import socket
 from unittest import TestCase, mock
 from paxos.server import Server
 from paxos.core import Message
+from paxos.protocol import ProposalNumber
 
 class LeaderElectionTest(TestCase):
 
@@ -12,7 +13,7 @@ class LeaderElectionTest(TestCase):
     self.nack = Message(
       message_type=Message.MSG_PREPARE_NACK,
       sender_id=10,
-      prop_num=0,
+      prop_num=ProposalNumber.get_lowest_possible().as_tuple(),
       leader_id=10,
       last_heartbeat=100)
     self.prepare_responses = [self.nack, self.nack, self.nack, self.nack]

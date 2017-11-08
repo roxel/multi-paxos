@@ -1,7 +1,9 @@
 import socketserver
-from paxos.core import Participant, string_to_address, address_to_node_id, Message, StoreMixin, Node
-from paxos.protocol import PaxosHandler
-from threading import Timer
+from paxos.core import Participant, string_to_address, \
+    address_to_node_id, Message, Node, StoreMixin
+from paxos.protocol import PaxosHandler, ProposalNumber
+from threading import Timer, Lock
+from time import sleep
 import random
 
 
@@ -30,7 +32,7 @@ class Server(StoreMixin, Participant):
         self._leader_id_lock = Lock()
         self._prepare_responses_lock = Lock()
 
-        self._highest_prop_num = 0
+        self._highest_prop_num = ProposalNumber(self.id, 0)
         self._last_heartbeat = 0
         self._last_value = 0
         self._leader_id = None
@@ -45,7 +47,6 @@ class Server(StoreMixin, Participant):
         for idx, address in enumerate(self.servers):
             if (idx != self.id):
                 self.nodes[idx] = Node(address=address, node_id=idx)
-
         self.heartbeat_timeout_timer.start()
 
     def answer_to(self, message, node_id):
@@ -60,7 +61,7 @@ class Server(StoreMixin, Participant):
         low_prop_num_prepare_msg = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
-            prop_num=-1
+            prop_num=ProposalNumber.get_lowest_possible().as_tuple()
         )
         for node in self.nodes.values():
             node.send_message(low_prop_num_prepare_msg)
@@ -76,7 +77,7 @@ class Server(StoreMixin, Participant):
             nacks = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PREPARE_NACK)]
             self._prepare_responses = []
         
-        top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = (None,) * 4
+        top_leader, top_leader_occurrences, top_heartbeat, heartbeat_occurrences = (None,) * 4
         if (len(nacks) > 0):
             leader_heartbeats = {}
             leader_occurrences = {}
@@ -94,12 +95,12 @@ class Server(StoreMixin, Participant):
                     leader_heartbeats[leader][heartbeat] = 1
                 else:
                     leader_heartbeats[leader][heartbeat] += 1
-            top_leader, leader_occurrences = sorted(
+            top_leader, top_leader_occurrences = sorted(
                 leader_occurrences.items(), key=lambda e: e[1], reverse=True)[0]
             top_heartbeat, heartbeat_occurrences = sorted(
                 leader_heartbeats[leader].items(), key=lambda e: e[1], reverse=True)[0]
 
-        return top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences
+        return top_leader, top_leader_occurrences, top_heartbeat, heartbeat_occurrences
 
     def handle_low_prop_num(self):
         """
@@ -107,7 +108,7 @@ class Server(StoreMixin, Participant):
         to find out, if there is a stable leader
         prepare_responses = [(leader_id, last_heartbeat)...]
         """
-        top_leader, leader_occurrs, top_heartbeat, heartbeat_occurrs = self.count_nacks()
+        top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = self.count_nacks()
 
         if (leader_occurrences >= self.quorum_size 
                 and heartbeat_occurrences >= self.quorum_size):
@@ -117,8 +118,8 @@ class Server(StoreMixin, Participant):
             the heartbeat timer
             """
             print("A stable leader detected. Stopping election")
-            self.heartbeat_timeout_timer().cancel()
-            self.heartbeat_timeout_timer = Timer(Server.HEARTBEAT_TIMEOUT, self.handle_heartbeat_timeout)
+            self.heartbeat_timeout_timer.cancel()
+            self.heartbeat_timeout_timer = Timer(Server.get_randomized_timeout(), self.handle_heartbeat_timeout)
             self.heartbeat_timeout_timer.start()
             return
         else:
@@ -129,7 +130,7 @@ class Server(StoreMixin, Participant):
             print('No stable leader detected. Starting election')
             prepare_msg = Message(message_type=Message.MSG_PREPARE,
                 sender_id=self.id,
-                prop_num=self.next_proposal_num()
+                prop_num=self.next_proposal_num().as_tuple()
             )
             for node in self.nodes.values():
                 node.send_message(prepare_msg)
@@ -149,8 +150,10 @@ class Server(StoreMixin, Participant):
 
 
     def next_proposal_num(self):
-        return 0
-    
+        with self._prop_num_lock:
+            self._highest_prop_num = ProposalNumber(self.id, self._highest_prop_num.round_no + 1)
+            return self._highest_prop_num
+
     def send_heartbeats(self):
         pass
 
@@ -213,7 +216,7 @@ class Server(StoreMixin, Participant):
         print("Starting server {}".format(self.id))
         self.tcp_daemon = Server.CustomTCPServer((self.host, self.port), Server.TCPHandler, self)
         try:
-            self.tcp_server.serve_forever()
+            self.tcp_daemon.serve_forever()
         except KeyboardInterrupt:
             print("Terminating server {}".format(self.id))
 
