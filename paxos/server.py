@@ -60,11 +60,19 @@ class Server(StoreMixin, Participant):
         to check if there is a stable leader 
         """    
         print('Hearbeat timeout')
+        self.set_leader_id(None)
         low_prop_num_prepare_msg = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
             prop_num=ProposalNumber.get_lowest_possible().as_tuple()
         )
+        """
+        Wait a while for NACK messages to come
+        and check if there is a stable leader
+        """
+        self.reset_heartbeat_timeout_timer(
+                Server.HEARTBEAT_PERIOD, 
+                self.handle_low_prop_num)
         for id, node in self.nodes.items():
             """
             If there is no heartbeat signal from
@@ -74,13 +82,6 @@ class Server(StoreMixin, Participant):
             if (id != self.get_leader_id()):
                 node.send_message(low_prop_num_prepare_msg)
         
-        """
-        Wait a while for NACK messages to come
-        and check if there is a stable leader
-        """
-        self.reset_heartbeat_timeout_timer(
-                Server.HEARTBEAT_PERIOD, 
-                self.handle_low_prop_num)
     
     def count_nacks(self):
         nacks = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PREPARE_NACK)]

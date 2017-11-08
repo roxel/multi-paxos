@@ -83,6 +83,8 @@ class Node(object):
             # print('%s –> %s' % (self.address, received))
         except ConnectionRefusedError:
             print('%s –> %s' % (self.address, received))
+        except socket.timeout: 
+            print('Socket connected to [ID {}: {}] has timed out'.format(self.node_id, self.address))
         finally:
             sock.close()
         return received
@@ -92,6 +94,7 @@ class Node(object):
         :param message: Message instance
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
         received = self._send_on_socket(sock, data=message.serialize())
         return received
 
