@@ -138,9 +138,9 @@ class Server(StoreMixin, Participant):
         else:
             """
             There is no stable leader
-            Let's assume this node is the 
+            Let's assume this node is the
             new leader and send heartbeats to
-            others. If there is a node with a 
+            others. If there is a node with a
             bigger proposal number, it will
             be set as leader after receiving its
             heartbeat
