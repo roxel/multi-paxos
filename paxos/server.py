@@ -25,6 +25,7 @@ class Server(Participant):
         self.host, self.port = string_to_address(address)
         self.id = address_to_node_id(self.servers, self.address)
         self.quorum_size = self.initial_participants // 2 + 1
+        self.tcp_daemon = None
 
         self._prop_num_lock = Lock()
         self._last_heartbeat_lock = Lock()
@@ -72,34 +73,50 @@ class Server(Participant):
         and check if there is a stable leader
         """
         Timer(Server.HEARTBEAT_PERIOD, self.handle_low_prop_num).start()
-        
     
+    def count_nacks(self):
+        with (self._prepare_responses_lock):
+            nacks = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PREPARE_NACK)]
+            self._prepare_responses = []
+        
+        top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = (None,) * 4
+        if (len(nacks) > 0):
+            leader_heartbeats = {}
+            leader_occurrences = {}
+            for nack in nacks:
+                leader = nack.leader_id
+                heartbeat = nack.last_heartbeat
+                if (leader not in leader_occurrences):
+                    leader_occurrences[leader] = 1
+                else:
+                    leader_occurrences[leader] += 1
+
+                if (leader not in leader_heartbeats):
+                    leader_heartbeats[leader] = {}
+                if (heartbeat not in leader_heartbeats[leader]):
+                    leader_heartbeats[leader][heartbeat] = 1
+                else:
+                    leader_heartbeats[leader][heartbeat] += 1
+
+            top_leader, leader_occurrences = sorted(
+                leader_occurrences.items(), key=lambda e: e[1], reverse=True)[0]
+            top_heartbeat, heartbeat_occurrences = sorted(
+                leader_heartbeats[leader].items(), key=lambda e: e[1], reverse=True)[0]
+
+        return top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences
+
     def handle_low_prop_num(self):
         """
         Count reported leader IDs and heartbeat numbers 
         to find out, if there is a stable leader
         prepare_responses = [(leader_id, last_heartbeat)...]
         """
-        with (self._prepare_responses_lock):
-            leaders = {}
-            heartbeats = {}
-            print(self._prepare_responses)
-            for leader, heartbeat in self._prepare_responses:
-                if (leader not in leaders):
-                    leaders[leader] = 1
-                else:
-                    leaders[leader] += 1
-                if (heartbeat not in heartbeats):
-                    heartbeats[heartbeat] = 1
-                else:
-                    heartbeats[heartbeat] += 1
-        leader = sorted(leaders.items(), key=lambda e: e[1])[0]
-        heartbeat = sorted(heartbeats.items(), key=lambda e: e[1])[0]
-        self.clear_prepare_responses()
-        
-        if (leader[1] >= self.quorum_size 
-                and heartbeat[1] >= self.quorum_size
-                and heartbeat[0] > self.get_last_heartbeat()):
+
+        top_leader, leader_occurrs, top_heartbeat, heartbeat_occurrs = self.count_nacks()
+
+        if (leader_occurrences >= self.quorum_size 
+                and heartbeat_occurrences >= self.quorum_size
+                and top_heartbeat > self.get_last_heartbeat()):
             """
             Other nodes are connected with a stable leader
             so let's stop the election process and reset 
@@ -198,11 +215,19 @@ class Server(Participant):
 
     def run(self):
         print("Starting server {}".format(self.id))
-        server = Server.CustomTCPServer((self.host, self.port), Server.TCPHandler, self)
+        self.tcp_daemon = Server.CustomTCPServer((self.host, self.port), Server.TCPHandler, self)
         try:
-            server.serve_forever()
+            self.tcp_server.serve_forever()
         except KeyboardInterrupt:
             print("Terminating server {}".format(self.id))
+
+    def shutdown(self):
+        if (self.tcp_daemon):
+            self.tcp_daemon.shutdown()
+        if (self.heartbeat_timeout_timer and self.heartbeat_timeout_timer.is_alive()):
+            self.heartbeat_timeout_timer.cancel()
+        if (self.send_heartbeat_timer and self.send_heartbeat_timer.is_alive()):
+            self.send_heartbeat_timer.cancel()
 
     class CustomTCPServer(socketserver.TCPServer):
         def __init__(self, server_address, RequestHandlerClass, paxos_server, bind_and_activate=True):
