@@ -71,6 +71,7 @@ class Node(object):
         """
         self.address = address
         self.node_id = node_id
+        self.active = True
 
     def _send_on_socket(self, sock, data):
         received = 'err'
@@ -84,8 +85,10 @@ class Node(object):
             # print('%s –> %s' % (self.address, received))
         except ConnectionRefusedError:
             print('%s –> %s' % (self.address, received))
+            self.active = False
         except socket.timeout:
             print('Socket connected to [ID {}: {}] has timed out'.format(self.node_id, self.address))
+            self.active = False
         finally:
             sock.close()
         return received
@@ -94,10 +97,12 @@ class Node(object):
         """
         :param message: Message instance
         """
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        received = self._send_on_socket(sock, data=message.serialize())
-        return received
+
+        if self.active:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            received = self._send_on_socket(sock, data=message.serialize())
+            return received
 
 
 class MessageBase(object):

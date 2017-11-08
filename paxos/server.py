@@ -138,55 +138,15 @@ class Server(StoreMixin, Participant):
         else:
             """
             There is no stable leader
-            Let's send proper Prepare messages
+            Let's assume this node is the 
+            new leader and send heartbeats to
+            others. If there is a node with a 
+            bigger proposal number, it will
+            be set as leader after receiving its
+            heartbeat
             """
-            print('[Low-ball Prepare] No stable leader detected. Starting election')
-            prepare_msg = Message(message_type=Message.MSG_PREPARE,
-                                  sender_id=self.id,
-                                  prop_num=self.next_proposal_num().as_tuple()
-                                  )
-            for node in self.nodes.values():
-                node.send_message(prepare_msg)
-
-            self.reset_heartbeat_timeout_timer(
-                Server.HEARTBEAT_PERIOD, self.handle_prepare_responses)
-
-    def handle_prepare_responses(self):
-        """
-        Count received Promises and Nacks.
-        If a leader is pointed to in at least
-        {quorum_size} cases, set a leader
-        and reset the heartbeat timer
-        """
-
-        print("[Real Prepare] Counting Promises and NACKs")
-        with self._prepare_responses_lock:
-            promises_no = self.count_promises()
-            top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = self.count_nacks()
-            self._prepare_responses = []
-
-        if promises_no >= self.quorum_size:
-            print('This server [ID: {}] is the new leader'.format(self.id))
-            print('Starting sending heartbeats')
-
-            self.heartbeat_timeout_timer = None
-            self.set_leader_id(self.id)
-            self.send_heartbeat_timer = Timer(Server.HEARTBEAT_PERIOD, self.send_heartbeats)
-            self.send_heartbeat_timer.start()
-
-        else:
-            # Server hasn't obtained enough votes
-            # Let's check if the NACKS contain information
-            # about a a stable leader
-            if top_leader is not None and leader_occurrences >= self.quorum_size and \
-                            heartbeat_occurrences >= self.quorum_size:
-                print('[Real Prepare] A stable leader detected. Stopping election')
-                self.set_leader_id(top_leader)
-            else:
-                print('[Real Prepare] No leader has been elected. Restarting the election process')
-            self.reset_heartbeat_timeout_timer(
-                Server.get_randomized_timeout(),
-                self.handle_heartbeat_timeout)
+            self.next_proposal_num()
+            self.send_heartbeats()
 
     def handle_heartbeat(self, message):
         """
