@@ -1,52 +1,53 @@
 from paxos.core import Message
-import json
 import sys
+
 
 class ProposalNumber(object):
     """
     Round number is considered more important
     If ProposalNumber object A has server_id greater than
-    the server_id of object B but lesser round_no 
+    the server_id of object B but lesser round_no
     then A < B
     """
-    
-    @staticmethod
-    def get_lowest_possible():
-        return ProposalNumber(-sys.maxsize - 1, -sys.maxsize - 1)
 
     def __init__(self, server_id, round_no):
         self.server_id = server_id
         self.round_no = round_no
 
     def as_tuple(self):
-        return (self.server_id, self.round_no)
+        return self.server_id, self.round_no
 
     @staticmethod
     def from_tuple(t):
         return ProposalNumber(t[0], t[1])
+
+    @staticmethod
+    def get_lowest_possible():
+        return ProposalNumber(-sys.maxsize - 1, -sys.maxsize - 1)
 
     def __str__(self):
         return "ProposalNumber<{},{}>".format(self.server_id, self.round_no)
 
     def __lt__(self, other):
         return (self.round_no < other.round_no) \
-            or (self.round_no == other.round_no and self.server_id < other.server_id)
+               or (self.round_no == other.round_no and self.server_id < other.server_id)
 
-    def ___le__(self, other):
+    def __le__(self, other):
         return self.__lt__(other) or self.__eq__(other)
 
     def __eq__(self, other):
-        return (self.server_id == other.server_id and self.round_no == other.round_no)
+        return self.server_id == other.server_id and self.round_no == other.round_no
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __gt__(self, other):
         return (self.round_no > other.round_no) \
-            or (self.round_no == other.round_no and self.server_id > other.server_id)
+               or (self.round_no == other.round_no and self.server_id > other.server_id)
 
     def __ge__(self, other):
         return self.__gt__(other) or self.__eq__(other)
+
 
 class PaxosHandler(object):
     """
@@ -86,19 +87,22 @@ class PaxosHandler(object):
         prop_tuple = self.message.prop_num
         prop_num = ProposalNumber.from_tuple(prop_tuple)
         last_prop_num = self.server.get_highest_prop_num()
-        message = None
-        
-        if (prop_num > last_prop_num):
-            message = Message(message_type=Message.MSG_PROMISE,
+
+        if prop_num > last_prop_num:
+            message = Message(
+                message_type=Message.MSG_PROMISE,
                 sender_id=self.server.id,
-                prop_num=prop_tuple)
+                prop_num=prop_tuple,
+            )
             self.server.set_highest_prop_num(prop_num)
         else:
-            message = Message(message_type=Message.MSG_PREPARE_NACK,
+            message = Message(
+                message_type=Message.MSG_PREPARE_NACK,
                 sender_id=self.server.id,
                 prop_num=prop_tuple,
                 leader_id=self.server.get_leader_id(),
-                last_heartbeat=self.server.get_last_heartbeat())
+                last_heartbeat=self.server.get_last_heartbeat(),
+            )
         self.server.answer_to(message, node_id=self.message.sender_id)
 
     def on_prepare_nack(self):
@@ -115,4 +119,3 @@ class PaxosHandler(object):
 
     def on_heartbeat(self):
         self.server.handle_heartbeat(self.message)
-        

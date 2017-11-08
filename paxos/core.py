@@ -1,6 +1,7 @@
 import socket
 import json
 import redis
+from collections import OrderedDict
 
 
 def string_to_address(address):
@@ -83,7 +84,7 @@ class Node(object):
             # print('%s –> %s' % (self.address, received))
         except ConnectionRefusedError:
             print('%s –> %s' % (self.address, received))
-        except socket.timeout: 
+        except socket.timeout:
             print('Socket connected to [ID {}: {}] has timed out'.format(self.node_id, self.address))
         finally:
             sock.close()
@@ -99,7 +100,34 @@ class Node(object):
         return received
 
 
-class Message(object):
+class MessageBase(object):
+    """
+    Interna
+    """
+
+    def __init__(self):
+        self.data = OrderedDict()
+
+    def __getattr__(self, key):
+        return self.data[key]
+
+    def __setattr__(self, key, value):
+        if key != 'data':
+            self.data[key] = value
+        else:
+            super(MessageBase, self).__setattr__(key, value)
+
+    def serialize(self):
+        return bytes(json.dumps(self.data).encode('utf-8'))
+
+    @classmethod
+    def unserialize(cls, raw_data):
+        data = json.loads(raw_data, encoding='utf-8')
+        obj = cls(**data)
+        return obj
+
+
+class Message(MessageBase):
     """
     Structures data packets sent between participating nodes.
     """
@@ -112,23 +140,9 @@ class Message(object):
     MSG_ACCEPTED = 'accepted'
     MSG_HEARTBEAT = 'heartbeat'
 
-    def __init__(self, **kwargs):
-        self.data = kwargs
-
-    def __getattr__(self, key):
-        return self.data[key]
-
-    def __setattr__(self, key, value):
-        if key != 'data':
-            self.data[key] = value
-        else:
-            super(Message, self).__setattr__(key, value)
-
-    def serialize(self):
-        return bytes(json.dumps(self.data).encode('utf-8'))
-
-    @staticmethod
-    def unserialize(raw_data):
-        data = json.loads(raw_data, encoding='utf-8')
-        obj = Message(**data)
-        return obj
+    def __init__(self, message_type, sender_id=None, prop_num=None, **kwargs):
+        super(Message, self).__init__()
+        self.message_type = message_type
+        self.sender_id = sender_id
+        self.prop_num = prop_num
+        self.data.update(**kwargs)
