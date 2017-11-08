@@ -83,6 +83,7 @@ class Message(object):
     MSG_PROMISE = 'promise'
     MSG_ACCEPT_REQUEST = 'accept'
     MSG_ACCEPTED = 'accepted'
+    MSG_HEARTBEAT = 'heartbeat'
 
     def __init__(self, **kwargs):
         self.data = kwargs

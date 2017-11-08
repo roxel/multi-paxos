@@ -6,8 +6,6 @@ from threading import Timer, Lock
 from time import sleep
 import random
 
-
-
 class Server(Participant):
     HEARTBEAT_PERIOD = 5
     HEARTBEAT_TIMEOUT = 2 * HEARTBEAT_PERIOD
@@ -56,10 +54,10 @@ class Server(Participant):
 
     def handle_heartbeat_timeout(self):
         """
-        First send a test Prepare with low ballot number
+        First send a test Prepare with low proposal number
         to check if there is a stable leader 
         """    
-        print("Hearbeat timeout!")
+        print('Hearbeat timeout')
         low_prop_num_prepare_msg = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
@@ -97,7 +95,6 @@ class Server(Participant):
                     leader_heartbeats[leader][heartbeat] = 1
                 else:
                     leader_heartbeats[leader][heartbeat] += 1
-
             top_leader, leader_occurrences = sorted(
                 leader_occurrences.items(), key=lambda e: e[1], reverse=True)[0]
             top_heartbeat, heartbeat_occurrences = sorted(
@@ -111,29 +108,26 @@ class Server(Participant):
         to find out, if there is a stable leader
         prepare_responses = [(leader_id, last_heartbeat)...]
         """
-
         top_leader, leader_occurrs, top_heartbeat, heartbeat_occurrs = self.count_nacks()
 
         if (leader_occurrences >= self.quorum_size 
-                and heartbeat_occurrences >= self.quorum_size
-                and top_heartbeat > self.get_last_heartbeat()):
+                and heartbeat_occurrences >= self.quorum_size):
             """
             Other nodes are connected with a stable leader
             so let's stop the election process and reset 
             the heartbeat timer
             """
             print("A stable leader detected. Stopping election")
-            print(leader)
-            self.heartbeat_timeout_timer().cancel
-            self.heartbeat_timeout_timer(Server.HEARTBEAT_TIMEOUT, self.handle_heartbeat_timeout)
+            self.heartbeat_timeout_timer().cancel()
+            self.heartbeat_timeout_timer = Timer(Server.HEARTBEAT_TIMEOUT, self.handle_heartbeat_timeout)
             self.heartbeat_timeout_timer.start()
             return
         else:
             """
             There is no stable leader
-            let's send proper Prepare messages
+            Let's send proper Prepare messages
             """
-            print("No stable leader detected. Starting election")
+            print('No stable leader detected. Starting election')
             prepare_msg = Message(message_type=Message.MSG_PREPARE,
                 sender_id=self.id,
                 prop_num=self.next_proposal_num()
@@ -141,6 +135,9 @@ class Server(Participant):
             for node in self.nodes.values():
                 node.send_message(prepare_msg)
             Timer(Server.HEARTBEAT_TIMEOUT, self.handle_prepare_responses).start()
+
+    def count_promises(self):
+        pass
 
     def handle_prepare_responses(self):
         """
