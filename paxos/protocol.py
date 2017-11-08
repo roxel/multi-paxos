@@ -1,5 +1,37 @@
 from paxos.core import Message
 
+class ProposalNumber(object):
+    """
+    Round number is considered more important
+    If ProposalNumber object A has server_id greater than
+    the server_id of object B but lesser round_no 
+    then A < B
+    """
+    
+    def __init__(self, server_id, round_no):
+        self.server_id = server_id
+        self.round_no = round_no
+
+    def __lt__(self, other):
+        return (self.round_no < other.round_no) \
+            or (self.round_no == other.round_no and self.server_id < other.server_id)
+
+    def ___le__(self, other):
+        return self.__lt__(other) or self.__eq__(other)
+
+    def __eq__(self, other):
+        return (self.server_id == other.server_id and self.round_no == other.round_no)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __gt__(self, other):
+        return (self.round_no > other.round_no) \
+            or (self.round_no == other.round_no and self.server_id > other.server_id)
+
+    def __ge__(self, other):
+        return self.__gt__(other) or self.__eq__(other)
+
 class PaxosHandler(object):
     """
     Process Paxos protocol messages received by server.
@@ -11,6 +43,7 @@ class PaxosHandler(object):
         Message.MSG_PROMISE: 'on_promise',
         Message.MSG_ACCEPT_REQUEST: 'on_accept_request',
         Message.MSG_ACCEPTED: 'on_accepted',
+        Message.MSG_HEARTBEAT: 'on_heartbeat'
     }
 
     def __init__(self, message, server):
@@ -62,4 +95,7 @@ class PaxosHandler(object):
         pass
 
     def on_accepted(self):
+        pass
+
+    def on_heartbeat(self):
         pass
