@@ -208,6 +208,16 @@ class Server(Participant):
         with (self._prepare_responses_lock):
             self._prepare_responses = []
 
+    def get_prepare_response_with_the_highest_num(self):
+        with (self._prepare_responses_lock):
+            N = self._prepare_responses[0].prop_num
+            response = self._prepare_responses[0]
+            for prepare_response in self._prepare_responses:
+                if(prepare_response.prop_num > N):
+                    N = prepare_response.prop_num
+                    response = prepare_response.prop_num
+            return response
+
     """
     """
 
