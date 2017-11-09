@@ -1,7 +1,8 @@
 import datetime
 from time import time
 
-from paxos.core import Participant, Message, Node, address_to_node_id
+from paxos.core import Participant, Message, Node
+from paxos.helpers import address_to_node_id
 
 
 class Client(Participant):

@@ -1,4 +1,3 @@
-import socket
 from unittest import TestCase, mock
 from paxos.core import Message, Node
 
@@ -23,7 +22,8 @@ class MessageTest(TestCase):
     def test_serialize(self):
         msg = Message(issuer_id='3', message_type=Message.MSG_READ, key='xyz')
         s = msg.serialize()
-        self.assertEqual(s, b'{"issuer_id": "3", "message_type": "read", "key": "xyz"}')
+        expected = b'{"message_type": "read", "sender_id": null, "prop_num": null, "issuer_id": "3", "key": "xyz"}'
+        self.assertEqual(s, expected)
 
     def test_unserialize(self):
         s = b'{"issuer_id": "1", "message_type": "prepare", "key": "123"}'
