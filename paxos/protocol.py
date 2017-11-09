@@ -29,12 +29,13 @@ class PaxosHandler(object):
         print('Incorrect message type for message: %s' % self.message.serialize())
 
     def on_read(self):
-        print('Reading {}'.format(self.server.get(self.message.key)))
+        value = str(self.server.get(self.message.key))
+        print('Reading {}'.format(value))
         self.request.sendall(Message(
             message_type=Message.MSG_READ,
             sender_id=self.server.id,
             key=self.message.key,
-            value=self.server.get(self.message.key)
+            value=value
         ).serialize())
 
     def on_prepare(self):

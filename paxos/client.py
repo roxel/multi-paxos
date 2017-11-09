@@ -53,7 +53,7 @@ class Client(Participant):
             if stats[1] < self.quorum_size:
                 print('Quorum not satisfied')
             else:
-                print('Read value: {}'.format(stats[0]))
+                print('Read value: {}'.format(str(stats[0])))
 
     def write(self, key, value):
         print("WRITE: key={}, value={}".format(key, value))
