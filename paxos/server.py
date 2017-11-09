@@ -71,7 +71,7 @@ class Server(StoreMixin, Participant):
         low_prop_num_prepare_msg = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
-            prop_num=ProposalNumber.get_lowest_possible().as_tuple()
+            prop_num=ProposalNumber.get_lowest_possible().as_list()
         )
         # Wait a while for NACK messages to come
         # and check if there is a stable leader

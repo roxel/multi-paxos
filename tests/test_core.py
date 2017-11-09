@@ -1,5 +1,5 @@
 from unittest import TestCase, mock
-from paxos.core import Message, Node
+from paxos.core import Message, Node, ProposalNumber
 
 
 class CoreTest(TestCase):
@@ -11,10 +11,6 @@ class CoreTest(TestCase):
         message = Message(issuer_id='1', message_type=Message.MSG_READ)
         response = node.send_message(message)
         self.assertEqual(response, b'ok')
-
-
-class NodeTest(TestCase):
-    pass
 
 
 class MessageTest(TestCase):
@@ -31,3 +27,11 @@ class MessageTest(TestCase):
         self.assertEqual(msg.issuer_id, '1')
         self.assertEqual(msg.message_type, Message.MSG_PREPARE)
         self.assertEqual(msg.key, '123')
+
+    def test_proposal_number_serialization(self):
+        msg = Message(message_type=Message.MSG_PREPARE, key='abc', prop_num=[1, 10])
+        s = msg.serialize()
+        expected = b'{"message_type": "prepare", "sender_id": null, "prop_num": [1, 10], "key": "abc"}'
+        self.assertEqual(s, expected)
+        msg = Message.unserialize(s)
+        self.assertEqual(msg.prop_num, [1, 10])

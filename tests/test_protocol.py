@@ -33,6 +33,6 @@ class ProposalNumberTest(TestCase):
 
     def test_as_tuple(self):
         orig = ProposalNumber(1, 2)
-        dump = orig.as_tuple()
-        copy = ProposalNumber.from_tuple(dump)
+        dump = orig.as_list()
+        copy = ProposalNumber.from_list(dump)
         self.assertEqual(orig, copy)

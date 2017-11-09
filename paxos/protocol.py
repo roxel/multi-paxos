@@ -38,40 +38,60 @@ class PaxosHandler(object):
             value=value
         ).serialize())
 
+    def quorum_achieved(self, results):
+        return False
+
     def on_write(self):
+        """
+        Handles write request. Acting as a proposer.
+        """
         print('Client requesting to write: key={}, value={}'.format(self.message.key, self.message.value))
+        quorum_nodes = []
+        message = Message(
+            message_type=Message.MSG_PREPARE, sender_id=self.server.id,
+            key=self.message.key, prop_num=self.server.get_highest_prop_num,
+        )
+        quorum_achieved = False
+        while not self.quorum_achieved():
+            results = []
+            for node in quorum_nodes:
+                result = node.send_message(message)
+            quorum_achieved = False
 
     def on_prepare(self):
         """
-        message_type=Message.MSG_PREPARE,
-        sender_id=self.id,
-        prop_num=(server_id, round_id)
+        Handles prepare message. Acting as an acceptor.
         """
-        prop_tuple = self.message.prop_num
-        prop_num = ProposalNumber.from_tuple(prop_tuple)
+        prop_num = ProposalNumber.from_list(self.message.prop_num)
         last_prop_num = self.server.get_highest_prop_num()
 
         if prop_num > last_prop_num:
             message = Message(
                 message_type=Message.MSG_PROMISE,
                 sender_id=self.server.id,
-                prop_num=prop_tuple,
+                prop_num=self.message.prop_num,
             )
             self.server.set_highest_prop_num(prop_num)
         else:
             message = Message(
                 message_type=Message.MSG_PREPARE_NACK,
                 sender_id=self.server.id,
-                prop_num=prop_tuple,
+                prop_num=self.message.prop_num,
                 leader_id=self.server.get_leader_id(),
                 last_heartbeat=self.server.get_last_heartbeat(),
             )
         self.server.answer_to(message, node_id=self.message.sender_id)
 
     def on_prepare_nack(self):
+        """
+        Handles prepare_nack message. Acting as a proposer.
+        """
         self.server.append_prepare_responses(self.message)
 
     def on_promise(self):
+        """
+        Handles promise message. Acting as a proposer.
+        """
         self.server.append_prepare_responses(self.message)
 
     def on_accept_request(self):

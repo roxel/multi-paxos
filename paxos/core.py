@@ -134,11 +134,11 @@ class ProposalNumber(object):
         self.server_id = server_id
         self.round_no = round_no
 
-    def as_tuple(self):
-        return self.server_id, self.round_no
+    def as_list(self):
+        return [self.server_id, self.round_no]
 
     @staticmethod
-    def from_tuple(t):
+    def from_list(t):
         return ProposalNumber(t[0], t[1])
 
     @staticmethod

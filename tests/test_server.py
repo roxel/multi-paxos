@@ -12,7 +12,7 @@ class LeaderElectionTest(TestCase):
         self.nack = Message(
             message_type=Message.MSG_PREPARE_NACK,
             sender_id=10,
-            prop_num=ProposalNumber.get_lowest_possible().as_tuple(),
+            prop_num=ProposalNumber.get_lowest_possible().as_list(),
             leader_id=10,
             last_heartbeat=100)
         self.prepare_responses = [self.nack, self.nack, self.nack, self.nack]
