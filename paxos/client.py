@@ -1,8 +1,7 @@
 import datetime
 from time import time
 
-from paxos.core import Participant, Message, Node
-from paxos.helpers import address_to_node_id
+from paxos.core import Participant, Message
 
 
 class Client(Participant):
@@ -10,19 +9,13 @@ class Client(Participant):
     Client participating in read, write operations.
     """
 
-    def __init__(self, *args, **kwargs):
-        super(Client, self).__init__(*args, **kwargs)
-        self.quorum_size = self.initial_participants // 2 + 1
-        self.nodes = {}
-        for idx, address in enumerate(self.servers):
-            self.nodes[idx] = Node(address=address, node_id=idx)
-
     def run(self, key, value=None):
         """
         Run one time operation to read or write to other nodes.
         """
         start_time = datetime.datetime.now()
         print("Starting client at {}".format(start_time))
+        self.find_leader()
         if value:
             self.write(key, value)
         else:
@@ -32,29 +25,49 @@ class Client(Participant):
         print("Done. Took %0.3f seconds" % lasted)
 
     def read(self, key):
+        """
+        Reads value of a key.
+        Read request is sent to all nodes.
+        If quorum agrees on a value, the value is treated as correct and returned.
+        """
         print("READ: key={}".format(key))
-        read_msg = Message(
-            message_type=Message.MSG_READ,
-            sender_i='client',
-            key=key
-        )
+        message = Message(message_type=Message.MSG_READ, key=key)
         stats = {}
         for node in self.nodes.values():
             res = Message.unserialize(
-                node.send_message(read_msg))
+                node.send_message(message))
             if res.value not in stats:
                 stats[res.value] = 1
             else:
                 stats[res.value] += 1
-        if len(stats.keys()) == 0:
-            print('No response received')
+        value = self.choose_value(stats)
+        return value
+
+    def choose_value(self, stats):
+        """
+        Chooses correct value based on appearances count
+        """
+        stats = sorted(stats.items(), key=lambda e: e[1], reverse=True)
+        if not stats:
+            print('READ ERROR. No responses received.'.format(key))
         else:
-            stats = sorted(stats.items(), key=lambda e: e[1], reverse=True)[0]
-            if stats[1] < self.quorum_size:
-                print('Quorum not satisfied')
+            top_value = stats[0]
+            if top_value[1] < self.quorum_size:
+                print('READ ERROR. Quorum not satisfied.')
             else:
-                print('Read value: {}'.format(str(stats[0])))
+                print('Read value: {}'.format(str(top_value[0])))
+                return top_value[0]
+        return None
 
     def write(self, key, value):
         print("WRITE: key={}, value={}".format(key, value))
-        # TODO: finish write operation
+        message = Message(message_type=Message.MSG_WRITE, key=key, value=value)
+        self.leader.send_message(message)
+
+    def find_leader(self):
+        """
+        Initiate communication with nodes and find leader/proposer for direct connection with him.
+        """
+        # TODO: implement leader finding algorithm
+        self.leader = self.nodes[0]
+        return self.leader

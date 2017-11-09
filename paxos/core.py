@@ -13,9 +13,14 @@ class Participant(object):
 
     def __init__(self, servers):
         self.servers = servers
+        self._init_configuration()
+        
+    def _init_configuration(self):
         self.initial_participants = len(self.servers)
-        self.redis_host = 'localhost'
-        self.redis_port = 6379
+        self.nodes = {}
+        for idx, address in enumerate(self.servers):
+            self.nodes[idx] = Node(address=address, node_id=idx)
+        self.quorum_size = self.initial_participants // 2 + 1
 
     def run(self, *args, **kwargs):
         """
@@ -101,6 +106,7 @@ class Message(MessageBase):
     """
 
     MSG_READ = 'read'
+    MSG_WRITE = 'write'
     MSG_PREPARE = 'prepare'
     MSG_PREPARE_NACK = 'prepare-nack'
     MSG_PROMISE = 'promise'

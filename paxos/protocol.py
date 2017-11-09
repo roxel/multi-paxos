@@ -7,6 +7,7 @@ class PaxosHandler(object):
     """
     HANDLER_FUNCTIONS = {
         Message.MSG_READ: 'on_read',
+        Message.MSG_WRITE: 'on_write',
         Message.MSG_PREPARE: 'on_prepare',
         Message.MSG_PREPARE_NACK: 'on_prepare_nack',
         Message.MSG_PROMISE: 'on_promise',
@@ -21,8 +22,8 @@ class PaxosHandler(object):
         self.request = request
 
     def process(self):
-        function_name = PaxosHandler.HANDLER_FUNCTIONS[self.message.message_type]
-        handler_function = getattr(self, function_name, 'on_null')
+        function_name = PaxosHandler.HANDLER_FUNCTIONS.get(self.message.message_type, 'on_null')
+        handler_function = getattr(self, function_name, self.on_null)
         handler_function()
 
     def on_null(self):
@@ -37,6 +38,9 @@ class PaxosHandler(object):
             key=self.message.key,
             value=value
         ).serialize())
+
+    def on_write(self):
+        print('Client requesting to write: key={}, value={}'.format(self.message.key, self.message.value))
 
     def on_prepare(self):
         """

@@ -3,7 +3,7 @@ import time
 import socketserver
 from threading import Timer, Lock
 
-from paxos.core import Participant, Message, Node, ProposalNumber
+from paxos.core import Participant, Message, Node
 from paxos.helpers import string_to_address, address_to_node_id
 from paxos.store import StoreMixin
 from paxos.protocol import PaxosHandler, ProposalNumber
@@ -13,12 +13,15 @@ class Server(StoreMixin, Participant):
     HEARTBEAT_PERIOD = 1
     HEARTBEAT_TIMEOUT = 4 * HEARTBEAT_PERIOD
 
-    def __init__(self, address, *args, **kwargs):
+    def __init__(self, address, redis_host='localhost', redis_port=6379, *args, **kwargs):
         super(Server, self).__init__(*args, **kwargs)
         self.address = address
         self.host, self.port = string_to_address(address)
         self.id = address_to_node_id(self.servers, self.address)
-        self.quorum_size = self.initial_participants // 2 + 1
+
+        self.redis_host = redis_host
+        self.redis_port = redis_port
+
         self.tcp_daemon = None
 
         self._prop_num_lock = Lock()
@@ -277,10 +280,11 @@ class Server(StoreMixin, Participant):
     class CustomTCPServer(socketserver.TCPServer):
         def __init__(self, server_address, RequestHandlerClass, paxos_server, bind_and_activate=True):
             self.paxos_server = paxos_server
-            socketserver.TCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate=True)
+            self.allow_reuse_address = True
+            socketserver.TCPServer.__init__(self, server_address, RequestHandlerClass,
+                                            bind_and_activate=bind_and_activate)
 
     class TCPHandler(socketserver.BaseRequestHandler):
         def handle(self):
-            # print("Received message from %s:%s" % (self.client_address[0], self.client_address[1]))
             self.data = self.request.recv(1024).strip()
             PaxosHandler(Message.unserialize(self.data), self.server.paxos_server, self.request).process()
