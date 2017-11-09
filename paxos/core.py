@@ -14,7 +14,7 @@ class Participant(object):
     def __init__(self, servers):
         self.servers = servers
         self._init_configuration()
-        
+
     def _init_configuration(self):
         self.initial_participants = len(self.servers)
         self.nodes = {}

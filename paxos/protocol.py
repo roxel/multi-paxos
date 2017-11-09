@@ -31,7 +31,6 @@ class PaxosHandler(object):
 
     def on_read(self):
         value = str(self.server.get(self.message.key))
-        print('Reading {}'.format(value))
         self.request.sendall(Message(
             message_type=Message.MSG_READ,
             sender_id=self.server.id,

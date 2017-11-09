@@ -1,5 +1,5 @@
 import datetime
-from time import time
+from time import time, sleep
 
 from paxos.core import Participant, Message
 
@@ -49,7 +49,7 @@ class Client(Participant):
         """
         stats = sorted(stats.items(), key=lambda e: e[1], reverse=True)
         if not stats:
-            print('READ ERROR. No responses received.'.format(key))
+            print('READ ERROR. No responses received.')
         else:
             top_value = stats[0]
             if top_value[1] < self.quorum_size:
@@ -59,10 +59,18 @@ class Client(Participant):
                 return top_value[0]
         return None
 
+    def saved(self, key, value):
+        message = Message(message_type=Message.MSG_READ, key=key)
+        result = Message.unserialize(self.leader.send_message(message))
+        return result.value == bytes(value, encoding='utf-8')
+
     def write(self, key, value):
         print("WRITE: key={}, value={}".format(key, value))
         message = Message(message_type=Message.MSG_WRITE, key=key, value=value)
         self.leader.send_message(message)
+        while not self.saved(key, value):
+            sleep(0.1)
+        return True
 
     def find_leader(self):
         """
