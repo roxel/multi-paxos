@@ -1,5 +1,5 @@
 from unittest import TestCase
-from paxos.protocol import ProposalNumber
+from paxos.core import ProposalNumber
 
 
 class ProposalNumberTest(TestCase):

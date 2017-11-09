@@ -1,5 +1,6 @@
 import json
 import socket
+import sys
 from collections import OrderedDict
 
 from paxos.helpers import string_to_address
@@ -15,7 +16,6 @@ class Participant(object):
         self.initial_participants = len(self.servers)
         self.redis_host = 'localhost'
         self.redis_port = 6379
-        self.redis_db_index = 0
 
     def run(self, *args, **kwargs):
         """
@@ -114,3 +114,50 @@ class Message(MessageBase):
         self.sender_id = sender_id
         self.prop_num = prop_num
         self.data.update(**kwargs)
+
+
+class ProposalNumber(object):
+    """
+    Round number is considered more important
+    If ProposalNumber object A has server_id greater than
+    the server_id of object B but lesser round_no
+    then A < B
+    """
+
+    def __init__(self, server_id, round_no):
+        self.server_id = server_id
+        self.round_no = round_no
+
+    def as_tuple(self):
+        return self.server_id, self.round_no
+
+    @staticmethod
+    def from_tuple(t):
+        return ProposalNumber(t[0], t[1])
+
+    @staticmethod
+    def get_lowest_possible():
+        return ProposalNumber(-sys.maxsize - 1, -sys.maxsize - 1)
+
+    def __str__(self):
+        return "ProposalNumber<{},{}>".format(self.server_id, self.round_no)
+
+    def __lt__(self, other):
+        return (self.round_no < other.round_no) \
+               or (self.round_no == other.round_no and self.server_id < other.server_id)
+
+    def __le__(self, other):
+        return self.__lt__(other) or self.__eq__(other)
+
+    def __eq__(self, other):
+        return self.server_id == other.server_id and self.round_no == other.round_no
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __gt__(self, other):
+        return (self.round_no > other.round_no) \
+               or (self.round_no == other.round_no and self.server_id > other.server_id)
+
+    def __ge__(self, other):
+        return self.__gt__(other) or self.__eq__(other)
