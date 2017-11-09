@@ -116,7 +116,7 @@ class PaxosHandler(object):
             #value = ...
             prop_num = self.message.prop_num
 
-        message = Message(message_typr = Message.MSG_ACCEPT_REQUEST,
+        message = Message(message_type = Message.MSG_ACCEPT_REQUEST,
                           sender_id = self.server.id,
                           #value
                           prop_num = prop_num,
@@ -126,7 +126,16 @@ class PaxosHandler(object):
             self.server.answer_to(message, node_id=response.sender_id)
 
     def on_accepted(self):
-        pass
+        if(self.server._highest_prop_num < self.message.prop_num):
+            #value =
+            message = Message(message_type = Message.MSG_ACCEPTED,
+                              sender_id = self.server.id,
+                              #value
+                              prop_num = self.message.prop_num,
+                              leader_id = self.server.get_leader_id())
+
+        for node in self.server.nodes:
+            self.server.answer_to(message, node_id=node.node_id)
 
     def on_heartbeat(self):
         pass
