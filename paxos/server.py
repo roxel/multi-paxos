@@ -3,7 +3,9 @@ import time
 import socketserver
 from threading import Timer, Lock
 
-from paxos.core import Participant, string_to_address, address_to_node_id, Message, Node, StoreMixin
+from paxos.core import Participant, Message, Node
+from paxos.helpers import string_to_address, address_to_node_id
+from paxos.store import StoreMixin
 from paxos.protocol import PaxosHandler, ProposalNumber
 
 

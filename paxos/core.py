@@ -1,24 +1,8 @@
-import socket
 import json
-import redis
+import socket
 from collections import OrderedDict
 
-
-def string_to_address(address):
-    """
-    Change string representation of server address, e.g. 127.0.0.1:9999 to host, port tuple needed for socket API.
-
-    >>> string_to_address('127.0.0.1:9999')
-    ('127.0.0.1', 9999)
-    """
-    addr = address.split(":")
-    host = addr[0]
-    port = int(addr[1])
-    return host, port
-
-
-def address_to_node_id(servers, address):
-    return servers.index(address)
+from paxos.helpers import string_to_address
 
 
 class Participant(object):
@@ -38,25 +22,6 @@ class Participant(object):
         Run participant process. The process terminates when this method returns.
         """
         raise NotImplementedError()
-
-
-class StoreMixin(object):
-    """
-    Provides base for persistent storing of key-value pairs.
-    """
-
-    def redis_connection(self):
-        return redis.StrictRedis(host=self.redis_host, port=self.redis_port, db=self.id)
-
-    def set(self, key, value):
-        r = self.redis_connection()
-        result = r.set(key, value)
-        return result
-
-    def get(self, key):
-        r = self.redis_connection()
-        result = r.get(key)
-        return result
 
 
 class Node(object):
