@@ -30,3 +30,9 @@ Simple distributed key-value store using multi-paxos consensus protocol.
     node.send_message(message)
 ```
 * Servers automatically process messages based on their type. Messages are passed to `paxos.protocol.PaxosHandler` and appropriate handler methods are invoked, e.g. 'on_prepare', 'on_promise'.
+
+## Storage
+
+Servers store data in Redis. For local testing of the application they were configured to use the same Redis instance. 
+Each server stores data in database with the same number as its id. 
+Note that Redis limits may able (e.g. 16 database which can be changed in redis-server configs).

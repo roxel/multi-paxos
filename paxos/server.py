@@ -1,9 +1,9 @@
 import socketserver
-from paxos.core import Participant, string_to_address, address_to_node_id, Message
+from paxos.core import Participant, string_to_address, address_to_node_id, Message, StoreMixin
 from paxos.protocol import PaxosHandler
 
 
-class Server(Participant):
+class Server(StoreMixin, Participant):
     def __init__(self, address, *args, **kwargs):
         super(Server, self).__init__(*args, **kwargs)
         self.address = address

@@ -1,5 +1,6 @@
 import socket
 import json
+import redis
 
 
 def string_to_address(address):
@@ -27,12 +28,34 @@ class Participant(object):
     def __init__(self, servers):
         self.servers = servers
         self.initial_participants = len(self.servers)
+        self.redis_host = 'localhost'
+        self.redis_port = 6379
+        self.redis_db_index = 0
 
     def run(self, *args, **kwargs):
         """
         Run participant process. The process terminates when this method returns.
         """
         raise NotImplementedError()
+
+
+class StoreMixin(object):
+    """
+    Provides base for persistent storing of key-value pairs.
+    """
+
+    def redis_connection(self):
+        return redis.StrictRedis(host=self.redis_host, port=self.redis_port, db=self.id)
+
+    def set(self, key, value):
+        r = self.redis_connection()
+        result = r.set(key, value)
+        return result
+
+    def get(self, key):
+        r = self.redis_connection()
+        result = r.get(key)
+        return result
 
 
 class Node(object):
