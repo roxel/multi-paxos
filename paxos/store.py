@@ -1,3 +1,6 @@
+import redis
+
+
 class StoreMixin(object):
     """
     Provides base for persistent storing of key-value pairs.
