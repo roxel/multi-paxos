@@ -64,10 +64,34 @@ class PaxosHandler(object):
         self.server.append_prepare_responses(self.message)
 
     def on_accept_request(self):
-        pass
+        if(len(self.server._prepare_responses) >= self.server.quorum_size):
+            response = self.server._prepare_responses.get_prepare_response_with_the_highest_num()
+            #value = response.value
+            prop_num = response.prop_num
+        else:
+            #value = ...
+            prop_num = self.message.prop_num
+
+        message = Message(message_type = Message.MSG_ACCEPT_REQUEST,
+                          sender_id = self.server.id,
+                          #value
+                          prop_num = prop_num,
+                          leader_id = self.server.get_leader_id())
+
+        for response in self.server._prepare_responses:
+            self.server.answer_to(message, node_id=response.sender_id)
 
     def on_accepted(self):
-        pass
+        if(self.server._highest_prop_num < self.message.prop_num):
+            #value =
+            message = Message(message_type = Message.MSG_ACCEPTED,
+                              sender_id = self.server.id,
+                              #value
+                              prop_num = self.message.prop_num,
+                              leader_id = self.server.get_leader_id())
+
+        for node in self.server.nodes:
+            self.server.answer_to(message, node_id=node.node_id)
 
     def on_heartbeat(self):
         self.server.handle_heartbeat(self.message)
