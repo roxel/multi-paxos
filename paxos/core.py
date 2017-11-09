@@ -103,7 +103,9 @@ class Node(object):
 
 class MessageBase(object):
     """
-    Interna
+    Internal message representation.
+    Provides serialization mechanism.
+    All attributes are stored as dictionary elements.
     """
 
     def __init__(self):
