@@ -110,7 +110,7 @@ class PaxosHandler(object):
     def on_accept_request(self):
         if(len(self.server._prepare_responses) >= self.server.quorum_size):
             response = self.server._prepare_responses.get_prepare_response_with_the_highest_num()
-            #value = ...
+            #value = response.value
             prop_num = response.prop_num
         else:
             #value = ...
