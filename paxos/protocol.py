@@ -15,9 +15,10 @@ class PaxosHandler(object):
         Message.MSG_HEARTBEAT: 'on_heartbeat'
     }
 
-    def __init__(self, message, server):
+    def __init__(self, message, server, request):
         self.message = message
         self.server = server
+        self.request = request
 
     def process(self):
         function_name = PaxosHandler.HANDLER_FUNCTIONS[self.message.message_type]
@@ -28,7 +29,13 @@ class PaxosHandler(object):
         print('Incorrect message type for message: %s' % self.message.serialize())
 
     def on_read(self):
-        pass
+        print('Reading {}'.format(self.server.get(self.message.key)))
+        self.request.sendall(Message(
+            message_type=Message.MSG_READ,
+            sender_id=self.server.id,
+            key=self.message.key,
+            value=self.server.get(self.message.key)
+        ).serialize())
 
     def on_prepare(self):
         """

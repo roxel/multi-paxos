@@ -283,5 +283,4 @@ class Server(StoreMixin, Participant):
         def handle(self):
             # print("Received message from %s:%s" % (self.client_address[0], self.client_address[1]))
             self.data = self.request.recv(1024).strip()
-            self.request.sendall(b'ok')
-            PaxosHandler(Message.unserialize(self.data), self.server.paxos_server).process()
+            PaxosHandler(Message.unserialize(self.data), self.server.paxos_server, self.request).process()
