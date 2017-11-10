@@ -11,29 +11,31 @@ from paxos.protocol import PaxosHandler, ProposalNumber
 
 class Server(StoreMixin, Participant):
     HEARTBEAT_PERIOD = 1
-    HEARTBEAT_TIMEOUT = 4 * HEARTBEAT_PERIOD
+    HEARTBEAT_TIMEOUT = 3 * HEARTBEAT_PERIOD
+    PREPARE_TIMEOUT = 5
 
     def __init__(self, address, redis_host='localhost', redis_port=6379, *args, **kwargs):
         super(Server, self).__init__(*args, **kwargs)
         self.address = address
         self.host, self.port = string_to_address(address)
         self.id = address_to_node_id(self.servers, self.address)
+        self.current_node_no = self.initial_participants
 
         self.redis_host = redis_host
         self.redis_port = redis_port
 
         self.tcp_daemon = None
+        self.prepare_phase_completed = False
 
         self._prop_num_lock = Lock()
-        self._own_prop_num_lock = Lock()
         self._last_heartbeat_lock = Lock()
         self._last_value_lock = Lock()
         self._leader_id_lock = Lock()
         self._prepare_responses_lock = Lock()
         self._heartbeat_timeout_lock = Lock()
+        self._prepare_lock = Lock()
 
-        self._highest_prop_num = ProposalNumber(self.id, 0)
-        self._own_prop_num = ProposalNumber(self.id, 0)
+        self._highest_prop_num = ProposalNumber(-1, 0)
         self._last_heartbeat = 0
         self._last_value = 0
         self._leader_id = None
@@ -41,11 +43,17 @@ class Server(StoreMixin, Participant):
 
         self.send_heartbeat_timer = None
         self.heartbeat_timeout_timer = None
+        self.prepare_timeout_timer = None
 
         self.nodes = {}
         for idx, address in enumerate(self.servers):
             if idx != self.id:
                 self.nodes[idx] = Node(address=address, node_id=idx)
+
+        # if self.id == self.initial_participants - 1:
+        #     self.send_heartbeats()
+        #     self.send_prepare()
+        # else:
         self.reset_heartbeat_timeout_timer(
             Server.get_randomized_timeout(),
             self.handle_heartbeat_timeout)
@@ -68,6 +76,8 @@ class Server(StoreMixin, Participant):
         """
         print('Hearbeat timeout')
         self.set_leader_id(None)
+        self.current_node_no -= 1
+        self.quorum_size = self.current_node_no // 2 + 1
         low_prop_num_prepare_msg = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
@@ -148,7 +158,9 @@ class Server(StoreMixin, Participant):
             be set as leader after receiving its
             heartbeat
             """
+            self.set_leader_id(self.id)
             self.send_heartbeats()
+            self.send_prepare()
 
     def handle_heartbeat(self, message):
         if message.sender_id > self.id:
@@ -162,11 +174,8 @@ class Server(StoreMixin, Participant):
                 self.handle_heartbeat_timeout)
 
     def next_proposal_num(self):
-        with self._own_prop_num_lock:
             with self._prop_num_lock:
-                self._own_prop_num = ProposalNumber(self.id, self._own_prop_num.round_no + 1)
-                if self._own_prop_num > self._highest_prop_num:
-                    self._highest_prop_num = self._own_prop_num
+                self._highest_prop_num = ProposalNumber(self.id, self._highest_prop_num.round_no + 1)
                 return self._highest_prop_num
 
     def next_heartbeat(self):
@@ -184,6 +193,27 @@ class Server(StoreMixin, Participant):
         self.send_heartbeat_timer = Timer(Server.HEARTBEAT_PERIOD, self.send_heartbeats)
         self.send_heartbeat_timer.start()
 
+    def send_prepare(self):
+        prepare_msg = Message(
+            message_type=Message.MSG_PREPARE,
+            sender_id=self.id,
+            prop_num=self.next_proposal_num().as_list()
+        )
+        for node in self.nodes.values():
+            node.send_message(prepare_msg)
+        self.prepare_timeout_timer = Timer(Server.PREPARE_TIMEOUT, self.handle_prepare_timeout)
+        self.prepare_timeout_timer.start()
+
+    def handle_prepare_timeout(self):
+        with self._prepare_lock:
+            promises_no = len([msg for msg in self._prepare_responses
+                               if msg.message_type == Message.MSG_PROMISE])
+        if promises_no >= self.quorum_size:
+            self.prepare_phase_completed = True
+            print('Prepare phase completed')
+        else:
+            print('Prepare phase fail')
+
     # Synchronized accessors
 
     def get_highest_prop_num(self):
@@ -193,14 +223,6 @@ class Server(StoreMixin, Participant):
     def set_highest_prop_num(self, prop_num):
         with self._prop_num_lock:
             self._highest_prop_num = prop_num
-
-    def get_own_prop_num(self):
-        with self._prop_num_lock:
-            return self._own_prop_num
-
-    def set_own_prop_num(self, prop_num):
-        with self._prop_num_lock:
-            self._own_prop_num = prop_num
 
     def get_last_value(self):
         with self._last_value_lock:

@@ -30,13 +30,13 @@ class PaxosHandler(object):
         print('Incorrect message type for message: %s' % self.message.serialize())
 
     def on_read(self):
-        value = str(self.server.get(self.message.key))
-        self.request.sendall(Message(
-            message_type=Message.MSG_READ,
-            sender_id=self.server.id,
-            key=self.message.key,
-            value=value
-        ).serialize())
+        val = self.server.get(self.message.key)
+        val = str(val, 'utf-8') if val is not None else ''
+        self.request.sendall(Message(message_type=Message.MSG_READ,
+                                     sender_id=self.server.id,
+                                     key=self.message.key,
+                                     leader_id=self.server.get_leader_id(),
+                                     value=val).serialize())
 
     def quorum_achieved(self, results):
         return False
@@ -64,22 +64,19 @@ class PaxosHandler(object):
         """
         prop_num = ProposalNumber.from_list(self.message.prop_num)
         last_prop_num = self.server.get_highest_prop_num()
+        message = None
 
         if prop_num > last_prop_num:
-            message = Message(
-                message_type=Message.MSG_PROMISE,
-                sender_id=self.server.id,
-                prop_num=self.message.prop_num,
-            )
+            message = Message(message_type=Message.MSG_PROMISE,
+                              sender_id=self.server.id,
+                              prop_num=self.message.prop_num)
             self.server.set_highest_prop_num(prop_num)
         else:
-            message = Message(
-                message_type=Message.MSG_PREPARE_NACK,
-                sender_id=self.server.id,
-                prop_num=self.message.prop_num,
-                leader_id=self.server.get_leader_id(),
-                last_heartbeat=self.server.get_last_heartbeat(),
-            )
+            message = Message(message_type=Message.MSG_PREPARE_NACK,
+                              sender_id=self.server.id,
+                              prop_num=self.message.prop_num,
+                              leader_id=self.server.get_leader_id(),
+                              last_heartbeat=self.server.get_last_heartbeat())
         self.server.answer_to(message, node_id=self.message.sender_id)
 
     def on_prepare_nack(self):

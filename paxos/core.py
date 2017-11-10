@@ -50,9 +50,8 @@ class Node(object):
             sock.sendall(data)
 
             # Receive data from the server and shut down
-            received = str(sock.recv(1024), "utf-8")
-            # print('%s –> %s' % (self.address, received))
-        except ConnectionRefusedError:
+            received = sock.recv(1024)
+        except ConnectionRefusedError as e:
             print('%s –> %s' % (self.address, received))
         except socket.timeout:
             print('Socket connected to [ID {}: {}] has timed out'.format(self.node_id, self.address))

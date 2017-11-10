@@ -17,7 +17,10 @@ class Client(Participant):
         print("Starting client at {}".format(start_time))
         self.find_leader()
         if value:
-            self.write(key, value)
+            if self.leader is None:
+                print('No leader has been elected. Can\'t write any values')
+            else:
+                self.write(key, value)
         else:
             self.read(key)
         end_time = time()
@@ -34,12 +37,13 @@ class Client(Participant):
         message = Message(message_type=Message.MSG_READ, key=key)
         stats = {}
         for node in self.nodes.values():
-            res = Message.unserialize(
-                node.send_message(message))
-            if res.value not in stats:
-                stats[res.value] = 1
-            else:
-                stats[res.value] += 1
+            res = node.send_message(message)
+            if res != 'err':
+                res = Message.unserialize(res)
+                if res.value not in stats:
+                    stats[res.value] = 1
+                else:
+                    stats[res.value] += 1
         value = self.choose_value(stats)
         return value
 
@@ -48,6 +52,7 @@ class Client(Participant):
         Chooses correct value based on appearances count
         """
         stats = sorted(stats.items(), key=lambda e: e[1], reverse=True)
+        print(stats)
         if not stats:
             print('READ ERROR. No responses received.')
         else:
@@ -55,7 +60,6 @@ class Client(Participant):
             if top_value[1] < self.quorum_size:
                 print('READ ERROR. Quorum not satisfied.')
             else:
-                print('Read value: {}'.format(str(top_value[0])))
                 return top_value[0]
         return None
 
@@ -76,6 +80,20 @@ class Client(Participant):
         """
         Initiate communication with nodes and find leader/proposer for direct connection with him.
         """
-        # TODO: implement leader finding algorithm
-        self.leader = self.nodes[0]
+
+        message = Message(message_type=Message.MSG_READ, key='dummy')
+        stats = {}
+        active_nodes = self.initial_participants
+        for node in self.nodes.values():
+            res = node.send_message(message)
+            if res != 'err':
+                res = Message.unserialize(res)
+                if res.leader_id not in stats:
+                    stats[res.leader_id] = 1
+                else:
+                    stats[res.leader_id] += 1
+            else:
+                active_nodes -= 1
+        self.quorum_size = active_nodes // 2 + 1
+        self.leader = self.choose_value(stats)
         return self.leader
