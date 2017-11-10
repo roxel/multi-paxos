@@ -136,4 +136,4 @@ class LeaderElectionTest(TestCase):
         expected = ProposalNumber(self.server_id, 1)
         server.shutdown()
         self.assertEqual(expected, prop_num)
-        self.assertEqual(expected, server.get_highest_prop_num())
+        self.assertEqual(expected, server.highest_prop_num())

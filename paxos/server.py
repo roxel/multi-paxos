@@ -61,6 +61,56 @@ class Server(StoreMixin, Participant):
         self._heartbeat_timeout_lock = Lock()
         self._prepare_lock = Lock()
 
+    @property
+    def highest_prop_num(self):
+        with self._prop_num_lock:
+            return self._highest_prop_num
+
+    @highest_prop_num.setter
+    def highest_prop_num(self, prop_num):
+        with self._prop_num_lock:
+            self._highest_prop_num = prop_num
+
+    @property
+    def last_value(self):
+        with self._last_value_lock:
+            return self._last_value
+
+    @last_value.setter
+    def last_value(self, value):
+        with self._last_value_lock:
+            self._last_value = value
+
+    @property
+    def leader_id(self):
+        with self._leader_id_lock:
+            return self._leader_id
+
+    @leader_id.setter
+    def leader_id(self, leader_id):
+        with self._leader_id_lock:
+            self._leader_id = leader_id
+
+    @property
+    def last_heartbeat(self):
+        with self._last_heartbeat_lock:
+            return self._last_heartbeat
+
+    @last_heartbeat.setter
+    def last_heartbeat(self, heartbeat):
+        with self._last_heartbeat_lock:
+            self._last_heartbeat = heartbeat
+
+    @property
+    def prepare_responses(self):
+        with self._prepare_responses_lock:
+            return self._prepare_responses
+
+    @prepare_responses.setter
+    def prepare_responses(self, prepare_responses):
+        with self._prepare_responses_lock:
+            self._prepare_responses = prepare_responses
+
     @staticmethod
     def get_randomized_timeout():
         """
@@ -75,7 +125,7 @@ class Server(StoreMixin, Participant):
         to check if there is a stable leader
         """
         print('Hearbeat timeout')
-        self.set_leader_id(None)
+        self.leader_id = None
         self.current_node_no -= 1
         self.quorum_size = self.current_node_no // 2 + 1            # ??
         low_prop_num_prepare_msg = Message(
@@ -92,7 +142,7 @@ class Server(StoreMixin, Participant):
             # If there is no heartbeat signal from
             # the leader node, don't send messages
             # to it
-            if id != self.get_leader_id():
+            if id != self.leader_id:
                 node.send_message(low_prop_num_prepare_msg)
 
     def count_nacks(self):
@@ -144,7 +194,7 @@ class Server(StoreMixin, Participant):
             the heartbeat timer
             """
             print("[Low-ball Prepare] A stable leader detected. Stopping election")
-            self.set_leader_id(top_leader)
+            self.leader_id = top_leader
             self.reset_heartbeat_timeout_timer(
                 Server.get_randomized_timeout(),
                 self.handle_heartbeat_timeout)
@@ -158,7 +208,7 @@ class Server(StoreMixin, Participant):
             be set as leader after receiving its
             heartbeat
             """
-            self.set_leader_id(self.id)
+            self.leader_id = self.id
             self.send_heartbeats()
             self.send_prepare()
 
@@ -167,8 +217,8 @@ class Server(StoreMixin, Participant):
             print('[Heartbeat from {}]'.format(message.sender_id))
             if self.send_heartbeat_timer and self.send_heartbeat_timer.is_alive():
                 self.send_heartbeat_timer.cancel()
-            self.set_last_heartbeat(message.heartbeat)
-            self.set_leader_id(message.sender_id)
+            self.last_heartbeat = message.heartbeat
+            self.leader_id = message.sender_id
             self.reset_heartbeat_timeout_timer(
                 Server.get_randomized_timeout(),
                 self.handle_heartbeat_timeout)
@@ -214,48 +264,6 @@ class Server(StoreMixin, Participant):
         else:
             print('Prepare phase fail')
 
-    # Synchronized accessors
-
-    def get_highest_prop_num(self):
-        with self._prop_num_lock:
-            return self._highest_prop_num
-
-    def set_highest_prop_num(self, prop_num):
-        with self._prop_num_lock:
-            self._highest_prop_num = prop_num
-
-    def get_last_value(self):
-        with self._last_value_lock:
-            return self._last_value
-
-    def set_last_value(self, value):
-        with self._last_value_lock:
-            self._last_value = value
-
-    def get_leader_id(self):
-        with self._leader_id_lock:
-            return self._leader_id
-
-    def set_leader_id(self, leader_id):
-        with self._leader_id_lock:
-            self._leader_id = leader_id
-
-    def get_last_heartbeat(self):
-        with self._last_heartbeat_lock:
-            return self._last_heartbeat
-
-    def set_last_heartbeat(self, heartbeat):
-        with self._last_heartbeat_lock:
-            self._last_heartbeat = heartbeat
-
-    def get_prepare_responses(self):
-        with self._prepare_responses_lock:
-            return self._prepare_responses
-
-    def set_prepare_responses(self, prepare_responses):
-        with self._prepare_responses_lock:
-            self._prepare_responses = prepare_responses
-
     def get_prepare_response_with_the_highest_num(self):
         with self._prepare_responses_lock:
             N = self._prepare_responses[0].prop_num
@@ -281,6 +289,8 @@ class Server(StoreMixin, Participant):
                 self.heartbeat_timeout_timer.cancel()
             self.heartbeat_timeout_timer = Timer(timeout, job)
             self.heartbeat_timeout_timer.start()
+
+    # server methods
 
     def run(self):
         print("Starting server {}".format(self.id))

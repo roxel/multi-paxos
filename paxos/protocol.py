@@ -33,7 +33,7 @@ class PaxosHandler(object):
         val = self.server.get(self.message.key)
         val = str(val, 'utf-8') if val is not None else ''
         message = Message(message_type=Message.MSG_READ,
-                          sender_id=self.server.id, leader_id=self.server.get_leader_id(),
+                          sender_id=self.server.id, leader_id=self.server.leader_id,
                           key=self.message.key, value=val)
         self.request.sendall(message.serialize())
 
@@ -45,10 +45,11 @@ class PaxosHandler(object):
         Handles write request. Acting as a proposer.
         """
         print('Client requesting to write: key={}, value={}'.format(self.message.key, self.message.value))
-        quorum_nodes = []
+        quorum_nodes = []       # choose quorum for prepare message
+                                # increase proposal number!!
         message = Message(
             message_type=Message.MSG_PREPARE, sender_id=self.server.id,
-            key=self.message.key, prop_num=self.server.get_highest_prop_num,
+            key=self.message.key, prop_num=self.server.highest_prop_num,
         )
         quorum_achieved = False
         while not self.quorum_achieved():
@@ -62,20 +63,20 @@ class PaxosHandler(object):
         Handles prepare message. Acting as an acceptor.
         """
         prop_num = ProposalNumber.from_list(self.message.prop_num)
-        last_prop_num = self.server.get_highest_prop_num()
+        last_prop_num = self.server.highest_prop_num
         message = None
 
         if prop_num > last_prop_num:
             message = Message(message_type=Message.MSG_PROMISE,
                               sender_id=self.server.id,
                               prop_num=self.message.prop_num)
-            self.server.set_highest_prop_num(prop_num)
+            self.server.highest_prop_num = prop_num
         else:
             message = Message(message_type=Message.MSG_PREPARE_NACK,
                               sender_id=self.server.id,
                               prop_num=self.message.prop_num,
-                              leader_id=self.server.get_leader_id(),
-                              last_heartbeat=self.server.get_last_heartbeat())
+                              leader_id=self.server.leader_id,
+                              last_heartbeat=self.server.last_heartbeat)
         self.server.answer_to(message, node_id=self.message.sender_id)
 
     def on_prepare_nack(self):
@@ -92,7 +93,7 @@ class PaxosHandler(object):
 
     def on_accept_request(self):
         if len(self.server._prepare_responses) >= self.server.quorum_size:
-            response = self.server._prepare_responses.get_prepare_response_with_the_highest_num()
+            response = self.server._prepare_responses.prepare_response_with_the_highest
             # value = response.value
             prop_num = response.prop_num
         else:
@@ -103,7 +104,7 @@ class PaxosHandler(object):
                           sender_id=self.server.id,
                           # value
                           prop_num=prop_num,
-                          leader_id=self.server.get_leader_id())
+                          leader_id=self.server.leader_id)
 
         for response in self.server._prepare_responses:
             self.server.answer_to(message, node_id=response.sender_id)
@@ -115,7 +116,7 @@ class PaxosHandler(object):
                               sender_id=self.server.id,
                               # value
                               prop_num=self.message.prop_num,
-                              leader_id=self.server.get_leader_id())
+                              leader_id=self.server.leader_id)
 
         for node in self.server.nodes:
             self.server.answer_to(message, node_id=node.node_id)
