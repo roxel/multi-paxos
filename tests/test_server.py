@@ -1,8 +1,7 @@
+import time
 from unittest import TestCase
 from paxos.server import Server
 from paxos.core import Message, ProposalNumber
-from paxos.protocol import ProposalNumber
-import time
 
 
 class LeaderElectionTest(TestCase):

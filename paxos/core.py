@@ -13,6 +13,7 @@ class Participant(object):
 
     def __init__(self, servers):
         self.servers = servers
+        self.leader = None
         self._init_configuration()
 
     def _init_configuration(self):
@@ -21,6 +22,9 @@ class Participant(object):
         for idx, address in enumerate(self.servers):
             self.nodes[idx] = Node(address=address, node_id=idx)
         self.quorum_size = self.initial_participants // 2 + 1
+
+    def answer_to(self, message, node_id):
+        self.nodes[node_id].send_message(message)
 
     def run(self, *args, **kwargs):
         """

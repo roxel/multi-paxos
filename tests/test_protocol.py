@@ -1,7 +1,8 @@
-from unittest import TestCase, mock
+from unittest import TestCase
 from paxos.core import ProposalNumber
 from paxos.core import Message
 from paxos.protocol import PaxosHandler
+
 
 class ProtocolTest(TestCase):
 
@@ -17,6 +18,7 @@ class ProtocolTest(TestCase):
     #    message = Message(issuer_id='3', message_type=Message.MSG_PROMISE, key='xyz', prop_num = 4)
     #    paxos_handler = PaxosHandler(message, mock_server, TCPHandler.request)
     #    paxos_handler.on_prepare()
+
 
 class ProposalNumberTest(TestCase):
     def test_lt(self):

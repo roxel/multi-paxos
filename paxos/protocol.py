@@ -32,11 +32,10 @@ class PaxosHandler(object):
     def on_read(self):
         val = self.server.get(self.message.key)
         val = str(val, 'utf-8') if val is not None else ''
-        self.request.sendall(Message(message_type=Message.MSG_READ,
-                                     sender_id=self.server.id,
-                                     key=self.message.key,
-                                     leader_id=self.server.get_leader_id(),
-                                     value=val).serialize())
+        message = Message(message_type=Message.MSG_READ,
+                          sender_id=self.server.id, leader_id=self.server.get_leader_id(),
+                          key=self.message.key, value=val)
+        self.request.sendall(message.serialize())
 
     def quorum_achieved(self, results):
         return False

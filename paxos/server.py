@@ -27,13 +27,7 @@ class Server(StoreMixin, Participant):
         self.tcp_daemon = None
         self.prepare_phase_completed = False
 
-        self._prop_num_lock = Lock()
-        self._last_heartbeat_lock = Lock()
-        self._last_value_lock = Lock()
-        self._leader_id_lock = Lock()
-        self._prepare_responses_lock = Lock()
-        self._heartbeat_timeout_lock = Lock()
-        self._prepare_lock = Lock()
+        self._init_locks()
 
         self._highest_prop_num = ProposalNumber(-1, 0)
         self._last_heartbeat = 0
@@ -58,6 +52,15 @@ class Server(StoreMixin, Participant):
             Server.get_randomized_timeout(),
             self.handle_heartbeat_timeout)
 
+    def _init_locks(self):
+        self._prop_num_lock = Lock()
+        self._last_heartbeat_lock = Lock()
+        self._last_value_lock = Lock()
+        self._leader_id_lock = Lock()
+        self._prepare_responses_lock = Lock()
+        self._heartbeat_timeout_lock = Lock()
+        self._prepare_lock = Lock()
+
     @staticmethod
     def get_randomized_timeout():
         """
@@ -65,9 +68,6 @@ class Server(StoreMixin, Participant):
         minimize the risk of selecting multiple leaders
         """
         return Server.HEARTBEAT_TIMEOUT + int(random.random() * Server.HEARTBEAT_TIMEOUT)
-
-    def answer_to(self, message, node_id):
-        self.nodes[node_id].send_message(message)
 
     def handle_heartbeat_timeout(self):
         """
@@ -77,7 +77,7 @@ class Server(StoreMixin, Participant):
         print('Hearbeat timeout')
         self.set_leader_id(None)
         self.current_node_no -= 1
-        self.quorum_size = self.current_node_no // 2 + 1
+        self.quorum_size = self.current_node_no // 2 + 1            # ??
         low_prop_num_prepare_msg = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
@@ -257,11 +257,11 @@ class Server(StoreMixin, Participant):
             self._prepare_responses = prepare_responses
 
     def get_prepare_response_with_the_highest_num(self):
-        with (self._prepare_responses_lock):
+        with self._prepare_responses_lock:
             N = self._prepare_responses[0].prop_num
             response = self._prepare_responses[0]
             for prepare_response in self._prepare_responses:
-                if(prepare_response.prop_num > N):
+                if prepare_response.prop_num > N:
                     N = prepare_response.prop_num
                     response = prepare_response.prop_num
             return response
