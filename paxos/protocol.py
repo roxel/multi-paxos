@@ -9,8 +9,6 @@ class PaxosHandler(object):
         Message.MSG_READ: 'on_read',
         Message.MSG_WRITE: 'on_write',
         Message.MSG_PREPARE: 'on_prepare',
-        Message.MSG_PREPARE_NACK: 'on_prepare_nack',
-        Message.MSG_PROMISE: 'on_promise',
         Message.MSG_ACCEPT_REQUEST: 'on_accept_request',
         Message.MSG_ACCEPTED: 'on_accepted',
         Message.MSG_HEARTBEAT: 'on_heartbeat'
