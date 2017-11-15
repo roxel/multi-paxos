@@ -6,6 +6,10 @@ from collections import OrderedDict
 from paxos.helpers import string_to_address
 
 
+IMMEDIATE_TIMOUT = 1        # in seconds
+AWAITING_TIMEOUT = 10       # in seconds
+
+
 class Participant(object):
     """
     Base class for all participating processes: servers and clients.
@@ -77,6 +81,22 @@ class Node(object):
             sock.settimeout(timeout)
         received = self._send_on_socket(sock, data=message.serialize())
         return received
+
+    def send_immediate(self, message):
+        """
+        Sends message in immediate mode, meaning the socket will have a small timeout
+        allowing only short lived operations, like on_read, on_heartbeat, on_accept_request.
+        Server action for these requests are not expected to last long - server can respond
+        without contacting other servers.
+        """
+        return self.send_message(message, timeout=IMMEDIATE_TIMOUT)
+
+    def send_awaiting(self, message):
+        """
+        Sends message in awaiting mode. Socket will have a bigger timeout than in immediate mode,
+        allowing responding server to take long lasting actions, like for example contacting other nodes.
+        """
+        return self.send_message(message, timeout=AWAITING_TIMEOUT)
 
 
 class MessageBase(object):

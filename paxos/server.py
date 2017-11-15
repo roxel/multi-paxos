@@ -148,7 +148,7 @@ class Server(StoreMixin, Participant):
             # the leader node, don't send messages
             # to it
             if id != self.leader_id:
-                node.send_message(low_prop_num_prepare_msg)
+                node.send_immediate(low_prop_num_prepare_msg)
 
     def count_nacks(self):
         nacks = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PREPARE_NACK)]
@@ -243,7 +243,7 @@ class Server(StoreMixin, Participant):
             sender_id=self.id
         )
         for node in self.nodes.values():
-            node.send_message(heartbeat)
+            node.send_immediate(heartbeat)
 
         self.send_heartbeat_timer = Timer(Server.HEARTBEAT_PERIOD, self.send_heartbeats)
         self.send_heartbeat_timer.start()
@@ -255,7 +255,7 @@ class Server(StoreMixin, Participant):
             prop_num=self.next_proposal_num().as_list()
         )
         for node in self.nodes.values():
-            node.send_message(prepare_msg)
+            node.send_immediate(prepare_msg)
         self.prepare_timeout_timer = Timer(Server.PREPARE_TIMEOUT, self.handle_prepare_timeout)
         self.prepare_timeout_timer.start()
 

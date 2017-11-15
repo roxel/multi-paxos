@@ -52,7 +52,7 @@ class PaxosHandler(object):
             key=self.message.key, value=self.message.value,
         )
         for node_id, node in self.quorum_nodes:
-            result = node.send_message(message)
+            result = node.send_immediate(message)
         quorum_achieved = False
 
         if not quorum_achieved:

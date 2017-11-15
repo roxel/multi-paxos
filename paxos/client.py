@@ -42,7 +42,7 @@ class Client(Participant):
     def quorum_choice(self, message, field):
         stats = {}
         for node in self.nodes.values():
-            res = node.send_message(message)
+            res = node.send_immediate(message)
             if res != 'err':
                 res = Message.unserialize(res)
                 field_value = getattr(res, field)
@@ -70,13 +70,13 @@ class Client(Participant):
 
     def saved(self, key, value):
         message = Message(message_type=Message.MSG_READ, key=key)
-        result = Message.unserialize(self.leader.send_message(message))
+        result = Message.unserialize(self.leader.send_immediate(message))
         return result.value == bytes(value, encoding='utf-8')
 
     def write(self, key, value):
         print("WRITE: key={}, value={}".format(key, value))
         message = Message(message_type=Message.MSG_WRITE, key=key, value=value)
-        self.leader.send_message(message)
+        self.leader.send_awaiting(message)
         while not self.saved(key, value):
             sleep(0.1)
         return True
