@@ -133,14 +133,14 @@ class Message(MessageBase):
     Structures data packets sent between participating nodes.
     """
 
-    MSG_READ = 'read'
-    MSG_WRITE = 'write'
-    MSG_PREPARE = 'prepare'
-    MSG_PREPARE_NACK = 'prepare-nack'
-    MSG_PROMISE = 'promise'
-    MSG_ACCEPT_REQUEST = 'accept'
-    MSG_ACCEPTED = 'accepted'
-    MSG_HEARTBEAT = 'heartbeat'
+    MSG_READ = 'read'                       # immediate
+    MSG_WRITE = 'write'                     # awaiting
+    MSG_PREPARE = 'prepare'                 # immediate
+    MSG_PREPARE_NACK = 'prepare-nack'       # immediate TODO: handle gently terminating the socket or let it timeout
+    MSG_PROMISE = 'promise'                 # immediate TODO: handle gently terminating the socket or let it timeout
+    MSG_ACCEPT_REQUEST = 'accept'           # immediate
+    MSG_ACCEPTED = 'accepted'               # immediate TODO: handle gently terminating the socket or let it timeout
+    MSG_HEARTBEAT = 'heartbeat'             # immediate
 
     def __init__(self, message_type, sender_id=None, prop_num=None, **kwargs):
         super(Message, self).__init__()

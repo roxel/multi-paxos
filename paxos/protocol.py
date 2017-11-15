@@ -83,19 +83,13 @@ class PaxosHandler(object):
                               last_heartbeat=self.server.last_heartbeat)
         self.server.answer_to(message, node_id=self.message.sender_id)
 
-    def on_prepare_nack(self):
-        """
-        Handles prepare_nack message. Acting as a proposer.
-        """
-        self.server.append_prepare_responses(self.message)
-
-    def on_promise(self):
-        """
-        Handles promise message. Acting as a proposer.
-        """
-        self.server.append_prepare_responses(self.message)
-
     def on_accept_request(self):
+        """
+        Handles accept request sent by proposer, which previously successfully ended prepare-promise phase.
+        Server acting as an acceptor should send MSG_ACCEPTED to other nodes.
+        Send accepted or accepted not acknowledged to proposer by the same socket the accept request was received.
+        """
+        # TODO: verify docstring above and fix the implementation
         if len(self.server._prepare_responses) >= self.server.quorum_size:
             response = self.server._prepare_responses.prepare_response_with_the_highest
             # value = response.value
@@ -114,6 +108,13 @@ class PaxosHandler(object):
             self.server.answer_to(message, node_id=response.sender_id)
 
     def on_accepted(self):
+        """
+        Change of value has been accepted. Save new state on receiving node (no communication needed).
+        MSG_ACCEPTED should be sent be accepting node (the one responding to MSG_ACCEPT_REQUEST.
+        Both acceptors and proposer should receive it.
+        Acting as a learner.
+        """
+        # TODO: verify docstring above and fix the implementation
         if self.server._highest_prop_num < self.message.prop_num:
             # value =
             message = Message(message_type=Message.MSG_ACCEPTED,
