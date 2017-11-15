@@ -41,35 +41,30 @@ class LeaderElectionTest(TestCase):
     def test_count_nacks_top_leader(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.shutdown()
-        server.prepare_responses = self.nacks
-        top_leader, _, _, _ = server.count_nacks()
+        top_leader, _, _, _ = server.count_nacks(self.nacks)
         self.assertEqual(top_leader, self.leader_id)
 
     def test_count_nacks_top_leader_occurrs(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.shutdown()
-        server.prepare_responses = self.nacks
-        _, leader_occurrs, _, _ = server.count_nacks()
+        _, leader_occurrs, _, _ = server.count_nacks(self.nacks)
         self.assertEqual(leader_occurrs, 4)
 
     def test_count_nacks_top_heartbeat(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.shutdown()
-        server.prepare_responses = self.nacks
-        _, _, top_heartbeat, _ = server.count_nacks()
+        _, _, top_heartbeat, _ = server.count_nacks(self.nacks)
         self.assertEqual(top_heartbeat, self.last_heartbeat)
 
     def test_count_nacks_top_heartbeat_occurrs(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
-        server.prepare_responses = self.nacks
-        _, _, _, heartbeat_occurrs = server.count_nacks()
+        _, _, _, heartbeat_occurrs = server.count_nacks(self.nacks)
         server.shutdown()
         self.assertEqual(heartbeat_occurrs, 4)
 
     def test_count_nacks_no_responses(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
-        server.prepare_responses = []
-        top_leader, _, _, _ = server.count_nacks()
+        top_leader, _, _, _ = server.count_nacks([])
         server.shutdown()
         self.assertEqual(top_leader, None)
 
@@ -116,24 +111,9 @@ class LeaderElectionTest(TestCase):
         server.shutdown()
         self.assertGreater(hb2, hb1)
 
-    def test_handle_prepare_success(self):
+    def test_get_next_prop_num(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
-        server._prepare_responses = self.promises
-        server.handle_prepare_timeout()
-        server.shutdown()
-        self.assertTrue(server.prepare_phase_completed)
-
-    def test_handle_prepare_failure(self):
-        server = Server(servers=self.SERVERS, address=self.ADDR)
-        server._prepare_responses = self.nacks
-        server.handle_prepare_timeout()
-        server.shutdown()
-        self.assertFalse(server.prepare_phase_completed)
-
-    def test_next_prop_num(self):
-        server = Server(servers=self.SERVERS, address=self.ADDR)
-        prop_num = server.next_proposal_num()
+        prop_num = server.get_next_prop_num()
         expected = ProposalNumber(self.server_id, 1)
         server.shutdown()
         self.assertEqual(expected, prop_num)
-        self.assertEqual(expected, server.highest_prop_num)

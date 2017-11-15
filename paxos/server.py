@@ -12,7 +12,6 @@ from paxos.protocol import PaxosHandler, ProposalNumber
 class Server(StoreMixin, Participant):
     HEARTBEAT_PERIOD = 1
     HEARTBEAT_TIMEOUT = 3 * HEARTBEAT_PERIOD
-    PREPARE_TIMEOUT = 5
 
     def __init__(self, address, redis_host='localhost', redis_port=6379, *args, **kwargs):
         super(Server, self).__init__(*args, **kwargs)
@@ -25,15 +24,15 @@ class Server(StoreMixin, Participant):
         self.redis_port = redis_port
 
         self.tcp_daemon = None
-        self.prepare_phase_completed = False
 
         self._init_locks()
 
-        self._highest_prop_num = ProposalNumber(-1, 0)
+        self._highest_prepare_msg = Message(message_type=Message.MSG_PREPARE,
+                                            sender_id=self.id,
+                                            prop_num=ProposalNumber(self.id, 0).as_list(),
+                                            key='', value='')
         self._last_heartbeat = 0
-        self._last_value = 0
         self._leader_id = None
-        self._prepare_responses = []
 
         self.send_heartbeat_timer = None
         self.heartbeat_timeout_timer = None
@@ -44,47 +43,29 @@ class Server(StoreMixin, Participant):
             if idx != self.id:
                 self.nodes[idx] = Node(address=address, node_id=idx)
 
-        # if self.id == self.initial_participants - 1:
-        #     self.send_heartbeats()
-        #     self.send_prepare()
-        # else:
         self.reset_heartbeat_timeout_timer(
             Server.get_randomized_timeout(),
             self.handle_heartbeat_timeout)
 
     def _init_locks(self):
-        self._prop_num_lock = Lock()
-        self._last_heartbeat_lock = Lock()
-        self._last_value_lock = Lock()
+        self._highest_prepare_msg_lock = Lock()
         self._leader_id_lock = Lock()
-        self._prepare_responses_lock = Lock()
+        self._last_heartbeat_lock = Lock()
         self._heartbeat_timeout_lock = Lock()
-        self._prepare_lock = Lock()
-
-    @property
-    def highest_prop_num(self):
-        with self._prop_num_lock:
-            return self._highest_prop_num
-
-    @highest_prop_num.setter
-    def highest_prop_num(self, prop_num):
-        with self._prop_num_lock:
-            self._highest_prop_num = prop_num
 
     def get_next_prop_num(self):
-        with self._prop_num_lock:
-            self._highest_prop_num = self._highest_prop_num.increased()
-            return self._highest_prop_num
+        with self._highest_prepare_msg_lock:
+            return ProposalNumber.from_list(self._highest_prepare_msg.prop_num).increased()
 
     @property
-    def last_value(self):
-        with self._last_value_lock:
-            return self._last_value
+    def highest_prepare_msg(self):
+        with self._highest_prepare_msg_lock:
+            return self._highest_prepare_msg
 
-    @last_value.setter
-    def last_value(self, value):
-        with self._last_value_lock:
-            self._last_value = value
+    @highest_prepare_msg.setter
+    def highest_prepare_msg(self, msg):
+        with self._highest_prepare_msg_lock:
+            self._highest_prepare_msg = msg
 
     @property
     def leader_id(self):
@@ -106,16 +87,6 @@ class Server(StoreMixin, Participant):
         with self._last_heartbeat_lock:
             self._last_heartbeat = heartbeat
 
-    @property
-    def prepare_responses(self):
-        with self._prepare_responses_lock:
-            return self._prepare_responses
-
-    @prepare_responses.setter
-    def prepare_responses(self, prepare_responses):
-        with self._prepare_responses_lock:
-            self._prepare_responses = prepare_responses
-
     @staticmethod
     def get_randomized_timeout():
         """
@@ -131,27 +102,24 @@ class Server(StoreMixin, Participant):
         """
         print('Hearbeat timeout')
         self.leader_id = None
-        self.current_node_no -= 1
-        self.quorum_size = self.current_node_no // 2 + 1            # ??
         low_prop_num_prepare_msg = Message(
             message_type=Message.MSG_PREPARE,
             sender_id=self.id,
-            prop_num=ProposalNumber.get_lowest_possible().as_list()
+            prop_num=ProposalNumber.get_lowest_possible().as_list(),
+            key="low-ball",
+            value=0
         )
-        # Wait a while for NACK messages to come
-        # and check if there is a stable leader
-        self.reset_heartbeat_timeout_timer(
-            Server.HEARTBEAT_PERIOD,
-            self.handle_low_prop_num)
-        for id, node in self.nodes.items():
-            # If there is no heartbeat signal from
-            # the leader node, don't send messages
-            # to it
-            if id != self.leader_id:
-                node.send_immediate(low_prop_num_prepare_msg)
 
-    def count_nacks(self):
-        nacks = [res for res in self._prepare_responses if (res.message_type == Message.MSG_PREPARE_NACK)]
+        # Send prepare messages synchronously
+        responses = []
+        for id, node in self.nodes.items():
+            if id != self.leader_id:
+                response = Message.unserialize(node.send_immediate(low_prop_num_prepare_msg))
+                responses.append(response)
+        self.handle_low_prop_num(responses)
+
+    def count_nacks(self, responses):
+        nacks = [res for res in responses if (res.message_type == Message.MSG_PREPARE_NACK)]
         top_leader, top_leader_occurrences, top_heartbeat, heartbeat_occurrences = (None,) * 4
 
         if len(nacks) > 0:
@@ -178,20 +146,18 @@ class Server(StoreMixin, Participant):
 
         return top_leader, top_leader_occurrences, top_heartbeat, heartbeat_occurrences
 
-    def handle_low_prop_num(self):
+    def handle_low_prop_num(self, responses):
         """
         Count reported leader IDs and heartbeat numbers
         to find out, if there is a stable leader
-        prepare_responses = [(leader_id, last_heartbeat)...]
         """
-
         print("[Low-ball Prepare] Counting low-ball responses")
-        with self._prepare_responses_lock:
-            top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = self.count_nacks()
-            self._prepare_responses = []
-
-        condition = top_leader is not None and leader_occurrences >= self.quorum_size \
+        top_leader, leader_occurrences, top_heartbeat, heartbeat_occurrences = self.count_nacks(responses)
+        condition = top_leader is not None \
+            and top_leader > self.id \
+            and leader_occurrences >= self.quorum_size \
             and heartbeat_occurrences >= self.quorum_size
+
         if condition:
             """
             Other nodes are connected with a stable leader
@@ -214,8 +180,8 @@ class Server(StoreMixin, Participant):
             heartbeat
             """
             self.leader_id = self.id
+            self.get_next_prop_num()
             self.send_heartbeats()
-            self.send_prepare()
 
     def handle_heartbeat(self, message):
         if message.sender_id > self.id:
@@ -227,11 +193,6 @@ class Server(StoreMixin, Participant):
             self.reset_heartbeat_timeout_timer(
                 Server.get_randomized_timeout(),
                 self.handle_heartbeat_timeout)
-
-    def next_proposal_num(self):
-            with self._prop_num_lock:
-                self._highest_prop_num = ProposalNumber(self.id, self._highest_prop_num.round_no + 1)
-                return self._highest_prop_num
 
     def next_heartbeat(self):
         return time.time()
@@ -247,46 +208,6 @@ class Server(StoreMixin, Participant):
 
         self.send_heartbeat_timer = Timer(Server.HEARTBEAT_PERIOD, self.send_heartbeats)
         self.send_heartbeat_timer.start()
-
-    def send_prepare(self):
-        prepare_msg = Message(
-            message_type=Message.MSG_PREPARE,
-            sender_id=self.id,
-            prop_num=self.next_proposal_num().as_list()
-        )
-        for node in self.nodes.values():
-            node.send_immediate(prepare_msg)
-        self.prepare_timeout_timer = Timer(Server.PREPARE_TIMEOUT, self.handle_prepare_timeout)
-        self.prepare_timeout_timer.start()
-
-    def handle_prepare_timeout(self):
-        with self._prepare_lock:
-            promises_no = len([msg for msg in self._prepare_responses
-                               if msg.message_type == Message.MSG_PROMISE])
-        if promises_no >= self.quorum_size:
-            self.prepare_phase_completed = True
-            print('Prepare phase completed')
-        else:
-            print('Prepare phase fail')
-
-    def get_prepare_response_with_the_highest_num(self):
-        with self._prepare_responses_lock:
-            N = self._prepare_responses[0].prop_num
-            response = self._prepare_responses[0]
-            for prepare_response in self._prepare_responses:
-                if prepare_response.prop_num > N:
-                    N = prepare_response.prop_num
-                    response = prepare_response.prop_num
-            return response
-
-    def append_prepare_responses(self, res):
-        with self._prepare_responses_lock:
-            self._prepare_responses.append(res)
-            print("Received a response to a Prepare message")
-
-    def clear_prepare_responses(self):
-        with self._prepare_responses_lock:
-            self._prepare_responses = []
 
     def reset_heartbeat_timeout_timer(self, timeout, job):
         with self._heartbeat_timeout_lock:

@@ -42,9 +42,8 @@ class Client(Participant):
     def quorum_choice(self, message, field):
         stats = {}
         for node in self.nodes.values():
-            res = node.send_immediate(message)
-            if res != 'err':
-                res = Message.unserialize(res)
+            res = Message.unserialize(node.send_immediate(message))
+            if res.message_type != Message.MSG_ERROR:
                 field_value = getattr(res, field)
                 if field_value not in stats:
                     stats[field_value] = 1
@@ -68,17 +67,21 @@ class Client(Participant):
                 return top_value[0]
         return None
 
-    def saved(self, key, value):
-        message = Message(message_type=Message.MSG_READ, key=key)
-        result = Message.unserialize(self.leader.send_immediate(message))
-        return result.value == bytes(value, encoding='utf-8')
+    # Not needed anymore ?
+    # def saved(self, key, value):
+    #     message = Message(message_type=Message.MSG_READ, key=key)
+    #     result = Message.unserialize(self.leader.send_immediate(message))
+    #     return result.value == bytes(value, encoding='utf-8')
 
     def write(self, key, value):
         print("WRITE: key={}, value={}".format(key, value))
         message = Message(message_type=Message.MSG_WRITE, key=key, value=value)
-        self.leader.send_awaiting(message)
-        while not self.saved(key, value):
-            sleep(0.1)
+        response = Message.unserialize(self.leader.send_awaiting(message))
+        if response.message_type == Message.MSG_ACCEPTED:
+            print('Write operation complete ({}: {})'.format(key, value))
+        else:
+            print('Request has failed')
+            print(response)
         return True
 
     def find_leader(self):

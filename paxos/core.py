@@ -25,6 +25,7 @@ class Participant(object):
         self.nodes = {}
         for idx, address in enumerate(self.servers):
             self.nodes[idx] = Node(address=address, node_id=idx)
+
         self.quorum_size = self.initial_participants // 2 + 1
 
     def answer_to(self, message, node_id):
@@ -51,7 +52,9 @@ class Node(object):
         self.node_id = node_id
 
     def _send_on_socket(self, sock, data):
-        received = 'err'
+        received = Message(message_type=Message.MSG_ERROR,
+                           reason='')
+        ex = None
         try:
             # Connect to server and send data
             sock.connect(string_to_address(self.address))
@@ -60,11 +63,17 @@ class Node(object):
             # Receive data from the server and shut down
             received = sock.recv(1024)
         except ConnectionRefusedError as e:
+            received.reason = 'ConnectionRefusedError'
+            ex = e
             print('%s –> %s' % (self.address, received))
-        except socket.timeout:
+        except socket.timeout as e:
+            received.reason = 'Socket has timed out'
+            ex = e
             print('Socket connected to [ID {}: {}] has timed out'.format(self.node_id, self.address))
         finally:
             sock.close()
+        if ex is not None:
+            received = received.serialize()
         return received
 
     def send_message(self, message, timeout=1):
@@ -118,6 +127,9 @@ class MessageBase(object):
         else:
             super(MessageBase, self).__setattr__(key, value)
 
+    def __str__(self):
+        return str([(key, value) for key, value in self.data.items() if value is not None])
+
     def serialize(self):
         return bytes(json.dumps(self.data).encode('utf-8'))
 
@@ -135,12 +147,14 @@ class Message(MessageBase):
 
     MSG_READ = 'read'                       # immediate
     MSG_WRITE = 'write'                     # awaiting
+    MSG_WRITE_NACK = 'write-nack'           # immediate
     MSG_PREPARE = 'prepare'                 # immediate
     MSG_PREPARE_NACK = 'prepare-nack'       # immediate TODO: handle gently terminating the socket or let it timeout
     MSG_PROMISE = 'promise'                 # immediate TODO: handle gently terminating the socket or let it timeout
     MSG_ACCEPT_REQUEST = 'accept'           # immediate
     MSG_ACCEPTED = 'accepted'               # immediate TODO: handle gently terminating the socket or let it timeout
     MSG_HEARTBEAT = 'heartbeat'             # immediate
+    MSG_ERROR = 'error'                     # immediate, response returned by Node._send_on_socket when failed
 
     def __init__(self, message_type, sender_id=None, prop_num=None, **kwargs):
         super(Message, self).__init__()

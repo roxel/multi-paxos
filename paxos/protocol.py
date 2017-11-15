@@ -1,4 +1,5 @@
 from paxos.core import Message, ProposalNumber, Node
+from collections import Counter
 
 
 class PaxosHandler(object):
@@ -44,82 +45,91 @@ class PaxosHandler(object):
         Handles write request. Acting as a proposer.
         """
         print('Client requesting to write: key={}, value={}'.format(self.message.key, self.message.value))
-        proposal_number = self.server.get_next_prop_num()
+        proposal_number = self.server.get_next_prop_num().as_list()
         message = Message(
             message_type=Message.MSG_PREPARE, sender_id=self.server.id, prop_num=proposal_number,
             key=self.message.key, value=self.message.value,
         )
-        for node_id, node in self.quorum_nodes:
-            result = node.send_immediate(message)
-        quorum_achieved = False
 
+        responses = []
+        for node_id, node in self.quorum_nodes.items():
+            response = Message.unserialize(node.send_immediate(message))
+            if response.message_type == Message.MSG_PREPARE_NACK:
+                print(response)
+            responses.append(response.message_type)
+        print(responses)
+        counter = Counter(responses)
+        quorum_achieved = (counter[Message.MSG_PROMISE] >= self.server.quorum_size - 1)
+
+        write_response = Message(message_type=Message.MSG_WRITE_NACK, sender_id=self.server.id,
+                                 key=self.message.key, value=self.message.value,)
         if not quorum_achieved:
-            message = Message(
-                message_type=Message.MSG_WRITE_NACK, sender_id=self.server.id,
-                key=self.message.key, value=self.message.value,
-            )
             print(message.serialize())
+        else:
+            # Nodes agreed on performing a WRITE operation
+            accept_msg = Message(message_type=Message.MSG_ACCEPT_REQUEST,
+                                 sender_id=self.server.id,
+                                 prop_num=proposal_number,
+                                 key=self.message.key,
+                                 value=self.message.value)
+            responses = []
+            for node_id, node in self.quorum_nodes.items():
+                response = Message.unserialize(node.send_immediate(accept_msg)).message_type
+                responses.append(response)
+            counter = Counter(responses)
+            if counter[Message.MSG_ACCEPTED] >= self.server.quorum_size - 1:
+                print('key {} : value {} set successfully'.format(self.message.key, self.message.value))
+                write_response = Message(message_type=Message.MSG_ACCEPTED,
+                                         sender_id=self.server.id,
+                                         prop_num=self.message.prop_num,
+                                         leader_id=self.server.leader_id,
+                                         key=self.message.key,
+                                         value=self.message.value)
+            else:
+                print('Too few Accepted responses')
+        self.request.sendall(write_response.serialize())
 
     def on_prepare(self):
         """
         Handles prepare message. Acting as an acceptor.
         """
         prop_num = ProposalNumber.from_list(self.message.prop_num)
-        last_prop_num = self.server.highest_prop_num
+        last_prop_num = ProposalNumber.from_list(self.server.highest_prepare_msg.prop_num)
         message = None
 
-        if prop_num > last_prop_num:
+        if prop_num >= last_prop_num:
             message = Message(message_type=Message.MSG_PROMISE,
                               sender_id=self.server.id,
-                              prop_num=self.message.prop_num)
-            self.server.highest_prop_num = prop_num
+                              prop_num=self.message.prop_num,
+                              key=self.message.key,
+                              value=self.message.value)
+            self.server.highest_prepare_msg = self.message
         else:
             message = Message(message_type=Message.MSG_PREPARE_NACK,
                               sender_id=self.server.id,
-                              prop_num=self.message.prop_num,
+                              prop_num=self.server.highest_prepare_msg.prop_num,
                               leader_id=self.server.leader_id,
                               last_heartbeat=self.server.last_heartbeat)
-        self.server.answer_to(message, node_id=self.message.sender_id)
+        self.request.sendall(message.serialize())
 
     def on_accept_request(self):
         """
         Handles accept request sent by proposer, which previously successfully ended prepare-promise phase.
-        Server acting as an acceptor should send MSG_ACCEPTED to other nodes.
         Send accepted or accepted not acknowledged to proposer by the same socket the accept request was received.
         """
         # TODO: verify docstring above and fix the implementation
-        if len(self.server._prepare_responses) >= self.server.quorum_size:
-            response = self.server._prepare_responses.prepare_response_with_the_highest
-            # value = response.value
-            prop_num = response.prop_num
-        else:
-            # value = ...
-            prop_num = self.message.prop_num
-
-        message = Message(message_type=Message.MSG_ACCEPT_REQUEST,
-                          sender_id=self.server.id,
-                          # value
-                          prop_num=prop_num,
-                          leader_id=self.server.leader_id)
-
-        for response in self.server._prepare_responses:
-            self.server.answer_to(message, node_id=response.sender_id)
-
-    def on_accepted(self):
-        """
-        Change of value has been accepted. Save new state on receiving node (no communication needed).
-        MSG_ACCEPTED should be sent be accepting node (the one responding to MSG_ACCEPT_REQUEST.
-        Both acceptors and proposer should receive it.
-        Acting as a learner.
-        """
-        # TODO: verify docstring above and fix the implementation
-        if self.server._highest_prop_num < self.message.prop_num:
-            # value =
-            message = Message(message_type=Message.MSG_ACCEPTED,
-                              sender_id=self.server.id,
-                              # value
-                              prop_num=self.message.prop_num,
-                              leader_id=self.server.leader_id)
-
-        for node in self.server.nodes:
-            self.server.answer_to(message, node_id=node.node_id)
+        prop_num = ProposalNumber.from_list(self.message.prop_num)
+        prepare_msg = self.server.highest_prepare_msg
+        condition = prop_num == ProposalNumber.from_list(prepare_msg.prop_num) \
+            and self.message.value == prepare_msg.value \
+            and self.message.key == prepare_msg.key
+        if condition:
+            response = self.server.set(self.message.key, self.message.value)
+            print('key {} : value {} set successfully'.format(self.message.key, self.message.value))
+            accepted_msg = Message(message_type=Message.MSG_ACCEPTED,
+                                   sender_id=self.server.id,
+                                   prop_num=self.message.prop_num,
+                                   leader_id=self.server.leader_id,
+                                   key=self.message.key,
+                                   value=self.message.value)
+            self.request.sendall(accepted_msg.serialize())
