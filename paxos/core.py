@@ -63,13 +63,18 @@ class Node(object):
             sock.close()
         return received
 
-    def send_message(self, message):
+    def send_message(self, message, timeout=1):
         """
+        :param timeout: socket timeout in seconds
+        :type timeout: float
         :param message: Message instance
+        :type message: Message
         """
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
+        sock.setblocking(1)
+        if timeout is not None:
+            sock.settimeout(timeout)
         received = self._send_on_socket(sock, data=message.serialize())
         return received
 
@@ -147,6 +152,9 @@ class ProposalNumber(object):
     @staticmethod
     def get_lowest_possible():
         return ProposalNumber(-sys.maxsize - 1, -sys.maxsize - 1)
+
+    def increased(self):
+        return ProposalNumber(self.server_id, self.round_no + 1)
 
     def __str__(self):
         return "ProposalNumber<{},{}>".format(self.server_id, self.round_no)

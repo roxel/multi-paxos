@@ -41,34 +41,34 @@ class LeaderElectionTest(TestCase):
     def test_count_nacks_top_leader(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.shutdown()
-        server.set_prepare_responses(self.nacks)
+        server.prepare_responses = self.nacks
         top_leader, _, _, _ = server.count_nacks()
         self.assertEqual(top_leader, self.leader_id)
 
     def test_count_nacks_top_leader_occurrs(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.shutdown()
-        server.set_prepare_responses(self.nacks)
+        server.prepare_responses = self.nacks
         _, leader_occurrs, _, _ = server.count_nacks()
         self.assertEqual(leader_occurrs, 4)
 
     def test_count_nacks_top_heartbeat(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.shutdown()
-        server.set_prepare_responses(self.nacks)
+        server.prepare_responses = self.nacks
         _, _, top_heartbeat, _ = server.count_nacks()
         self.assertEqual(top_heartbeat, self.last_heartbeat)
 
     def test_count_nacks_top_heartbeat_occurrs(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
-        server.set_prepare_responses(self.nacks)
+        server.prepare_responses = self.nacks
         _, _, _, heartbeat_occurrs = server.count_nacks()
         server.shutdown()
         self.assertEqual(heartbeat_occurrs, 4)
 
     def test_count_nacks_no_responses(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
-        server.set_prepare_responses([])
+        server.prepare_responses = []
         top_leader, _, _, _ = server.count_nacks()
         server.shutdown()
         self.assertEqual(top_leader, None)
@@ -84,7 +84,7 @@ class LeaderElectionTest(TestCase):
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.id = 0
         server.handle_heartbeat(heartbeat)
-        leader_id = server.get_leader_id()
+        leader_id = server.leader_id
         server.shutdown()
         self.assertEqual(self.leader_id, leader_id)
 
@@ -96,9 +96,9 @@ class LeaderElectionTest(TestCase):
         )
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.id = 10
-        old_leader = server.get_leader_id()
+        old_leader = server.leader_id
         server.handle_heartbeat(heartbeat)
-        leader_id = server.get_leader_id()
+        leader_id = server.leader_id
         server.shutdown()
         self.assertEqual(old_leader, leader_id)
 
@@ -106,7 +106,7 @@ class LeaderElectionTest(TestCase):
         server = Server(servers=self.SERVERS, address=self.ADDR)
         server.handle_heartbeat(self.heartbeat)
         server.shutdown()
-        self.assertEqual(self.last_heartbeat, server.get_last_heartbeat())
+        self.assertEqual(self.last_heartbeat, server.last_heartbeat)
 
     def test_next_heartbeat_increasing(self):
         server = Server(servers=self.SERVERS, address=self.ADDR)
@@ -136,4 +136,4 @@ class LeaderElectionTest(TestCase):
         expected = ProposalNumber(self.server_id, 1)
         server.shutdown()
         self.assertEqual(expected, prop_num)
-        self.assertEqual(expected, server.highest_prop_num())
+        self.assertEqual(expected, server.highest_prop_num)

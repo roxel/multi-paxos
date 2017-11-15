@@ -36,6 +36,7 @@ class Client(Participant):
         print("READ: key={}".format(key))
         message = Message(message_type=Message.MSG_READ, key=key)
         value = self.quorum_choice(message, 'value')
+        print("READ: key={}, value={}".format(key, value))
         return value
 
     def quorum_choice(self, message, field):
@@ -87,5 +88,6 @@ class Client(Participant):
         message = Message(message_type=Message.MSG_READ, key='dummy')
         value = self.quorum_choice(message, 'leader_id')
         print("Leader node_id: %s" % value)
-        self.leader = self.nodes[value]
+        if value:
+            self.leader = self.nodes[value]
         return self.leader

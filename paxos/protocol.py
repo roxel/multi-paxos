@@ -1,4 +1,4 @@
-from paxos.core import Message, ProposalNumber
+from paxos.core import Message, ProposalNumber, Node
 
 
 class PaxosHandler(object):
@@ -20,6 +20,7 @@ class PaxosHandler(object):
         self.message = message
         self.server = server
         self.request = request
+        self.quorum_nodes = {node_id: node for node_id, node in self.server.nodes.items() if node_id != self.server.id}
 
     def process(self):
         function_name = PaxosHandler.HANDLER_FUNCTIONS.get(self.message.message_type, 'on_null')
@@ -29,6 +30,9 @@ class PaxosHandler(object):
     def on_null(self):
         print('Incorrect message type for message: %s' % self.message.serialize())
 
+    def on_heartbeat(self):
+        self.server.handle_heartbeat(self.message)
+
     def on_read(self):
         val = self.server.get(self.message.key)
         val = str(val, 'utf-8') if val is not None else ''
@@ -37,26 +41,26 @@ class PaxosHandler(object):
                           key=self.message.key, value=val)
         self.request.sendall(message.serialize())
 
-    def quorum_achieved(self, results):
-        return False
-
     def on_write(self):
         """
         Handles write request. Acting as a proposer.
         """
         print('Client requesting to write: key={}, value={}'.format(self.message.key, self.message.value))
-        quorum_nodes = []       # choose quorum for prepare message
-                                # increase proposal number!!
+        proposal_number = self.server.get_next_prop_num()
         message = Message(
-            message_type=Message.MSG_PREPARE, sender_id=self.server.id,
-            key=self.message.key, prop_num=self.server.highest_prop_num,
+            message_type=Message.MSG_PREPARE, sender_id=self.server.id, prop_num=proposal_number,
+            key=self.message.key, value=self.message.value,
         )
+        for node_id, node in self.quorum_nodes:
+            result = node.send_message(message)
         quorum_achieved = False
-        while not self.quorum_achieved():
-            results = []
-            for node in quorum_nodes:
-                result = node.send_message(message)
-            quorum_achieved = False
+
+        if not quorum_achieved:
+            message = Message(
+                message_type=Message.MSG_WRITE_NACK, sender_id=self.server.id,
+                key=self.message.key, value=self.message.value,
+            )
+            print(message.serialize())
 
     def on_prepare(self):
         """
@@ -120,6 +124,3 @@ class PaxosHandler(object):
 
         for node in self.server.nodes:
             self.server.answer_to(message, node_id=node.node_id)
-
-    def on_heartbeat(self):
-        self.server.handle_heartbeat(self.message)

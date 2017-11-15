@@ -71,6 +71,11 @@ class Server(StoreMixin, Participant):
         with self._prop_num_lock:
             self._highest_prop_num = prop_num
 
+    def get_next_prop_num(self):
+        with self._prop_num_lock:
+            self._highest_prop_num = self._highest_prop_num.increased()
+            return self._highest_prop_num
+
     @property
     def last_value(self):
         with self._last_value_lock:
