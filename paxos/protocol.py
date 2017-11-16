@@ -1,4 +1,5 @@
-from paxos.core import Message, ProposalNumber
+from paxos.core import Message, ProposalNumber, Node
+from collections import Counter
 
 
 class PaxosHandler(object):
@@ -7,67 +8,128 @@ class PaxosHandler(object):
     """
     HANDLER_FUNCTIONS = {
         Message.MSG_READ: 'on_read',
+        Message.MSG_WRITE: 'on_write',
         Message.MSG_PREPARE: 'on_prepare',
-        Message.MSG_PREPARE_NACK: 'on_prepare_nack',
-        Message.MSG_PROMISE: 'on_promise',
         Message.MSG_ACCEPT_REQUEST: 'on_accept_request',
         Message.MSG_ACCEPTED: 'on_accepted',
         Message.MSG_HEARTBEAT: 'on_heartbeat'
     }
 
-    def __init__(self, message, server):
+    def __init__(self, message, server, request):
         self.message = message
         self.server = server
+        self.request = request
+        self.quorum_nodes = {node_id: node for node_id, node in self.server.nodes.items() if node_id != self.server.id}
 
     def process(self):
-        function_name = PaxosHandler.HANDLER_FUNCTIONS[self.message.message_type]
-        handler_function = getattr(self, function_name, 'on_null')
+        function_name = PaxosHandler.HANDLER_FUNCTIONS.get(self.message.message_type, 'on_null')
+        handler_function = getattr(self, function_name, self.on_null)
         handler_function()
 
     def on_null(self):
         print('Incorrect message type for message: %s' % self.message.serialize())
 
+    def on_heartbeat(self):
+        self.server.handle_heartbeat(self.message)
+
     def on_read(self):
-        pass
+        val = self.server.get(self.message.key)
+        val = str(val, 'utf-8') if val is not None else ''
+        message = Message(message_type=Message.MSG_READ,
+                          sender_id=self.server.id, leader_id=self.server.leader_id,
+                          key=self.message.key, value=val)
+        self.request.sendall(message.serialize())
+
+    def on_write(self):
+        """
+        Handles write request. Acting as a proposer.
+        """
+        print('Client requesting to write: key={}, value={}'.format(self.message.key, self.message.value))
+        proposal_number = self.server.get_next_prop_num().as_list()
+        message = Message(
+            message_type=Message.MSG_PREPARE, sender_id=self.server.id, prop_num=proposal_number,
+            key=self.message.key, value=self.message.value,
+        )
+
+        responses = []
+        for node_id, node in self.quorum_nodes.items():
+            response = Message.unserialize(node.send_immediate(message))
+            if response.message_type == Message.MSG_PREPARE_NACK:
+                print(response)
+            responses.append(response.message_type)
+        print(responses)
+        counter = Counter(responses)
+        quorum_achieved = (counter[Message.MSG_PROMISE] >= self.server.quorum_size - 1)
+
+        write_response = Message(message_type=Message.MSG_WRITE_NACK, sender_id=self.server.id,
+                                 key=self.message.key, value=self.message.value,)
+        if not quorum_achieved:
+            print(message.serialize())
+        else:
+            # Nodes agreed on performing a WRITE operation
+            accept_msg = Message(message_type=Message.MSG_ACCEPT_REQUEST,
+                                 sender_id=self.server.id,
+                                 prop_num=proposal_number,
+                                 key=self.message.key,
+                                 value=self.message.value)
+            responses = []
+            for node_id, node in self.quorum_nodes.items():
+                response = Message.unserialize(node.send_immediate(accept_msg)).message_type
+                responses.append(response)
+            counter = Counter(responses)
+            if counter[Message.MSG_ACCEPTED] >= self.server.quorum_size - 1:
+                print('key {} : value {} set successfully'.format(self.message.key, self.message.value))
+                write_response = Message(message_type=Message.MSG_ACCEPTED,
+                                         sender_id=self.server.id,
+                                         prop_num=self.message.prop_num,
+                                         leader_id=self.server.leader_id,
+                                         key=self.message.key,
+                                         value=self.message.value)
+            else:
+                print('Too few Accepted responses')
+        self.request.sendall(write_response.serialize())
 
     def on_prepare(self):
         """
-        message_type=Message.MSG_PREPARE,
-        sender_id=self.id,
-        prop_num=(server_id, round_id)
+        Handles prepare message. Acting as an acceptor.
         """
-        prop_tuple = self.message.prop_num
-        prop_num = ProposalNumber.from_tuple(prop_tuple)
-        last_prop_num = self.server.get_highest_prop_num()
+        prop_num = ProposalNumber.from_list(self.message.prop_num)
+        last_prop_num = ProposalNumber.from_list(self.server.highest_prepare_msg.prop_num)
+        message = None
 
-        if prop_num > last_prop_num:
-            message = Message(
-                message_type=Message.MSG_PROMISE,
-                sender_id=self.server.id,
-                prop_num=prop_tuple,
-            )
-            self.server.set_highest_prop_num(prop_num)
+        if prop_num >= last_prop_num:
+            message = Message(message_type=Message.MSG_PROMISE,
+                              sender_id=self.server.id,
+                              prop_num=self.message.prop_num,
+                              key=self.message.key,
+                              value=self.message.value)
+            self.server.highest_prepare_msg = self.message
         else:
-            message = Message(
-                message_type=Message.MSG_PREPARE_NACK,
-                sender_id=self.server.id,
-                prop_num=prop_tuple,
-                leader_id=self.server.get_leader_id(),
-                last_heartbeat=self.server.get_last_heartbeat(),
-            )
-        self.server.answer_to(message, node_id=self.message.sender_id)
-
-    def on_prepare_nack(self):
-        self.server.append_prepare_responses(self.message)
-
-    def on_promise(self):
-        self.server.append_prepare_responses(self.message)
+            message = Message(message_type=Message.MSG_PREPARE_NACK,
+                              sender_id=self.server.id,
+                              prop_num=self.server.highest_prepare_msg.prop_num,
+                              leader_id=self.server.leader_id,
+                              last_heartbeat=self.server.last_heartbeat)
+        self.request.sendall(message.serialize())
 
     def on_accept_request(self):
-        pass
-
-    def on_accepted(self):
-        pass
-
-    def on_heartbeat(self):
-        self.server.handle_heartbeat(self.message)
+        """
+        Handles accept request sent by proposer, which previously successfully ended prepare-promise phase.
+        Send accepted or accepted not acknowledged to proposer by the same socket the accept request was received.
+        """
+        # TODO: verify docstring above and fix the implementation
+        prop_num = ProposalNumber.from_list(self.message.prop_num)
+        prepare_msg = self.server.highest_prepare_msg
+        condition = prop_num == ProposalNumber.from_list(prepare_msg.prop_num) \
+            and self.message.value == prepare_msg.value \
+            and self.message.key == prepare_msg.key
+        if condition:
+            response = self.server.set(self.message.key, self.message.value)
+            print('key {} : value {} set successfully'.format(self.message.key, self.message.value))
+            accepted_msg = Message(message_type=Message.MSG_ACCEPTED,
+                                   sender_id=self.server.id,
+                                   prop_num=self.message.prop_num,
+                                   leader_id=self.server.leader_id,
+                                   key=self.message.key,
+                                   value=self.message.value)
+            self.request.sendall(accepted_msg.serialize())
