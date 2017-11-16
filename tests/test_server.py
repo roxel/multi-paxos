@@ -35,6 +35,11 @@ class LeaderElectionTest(TestCase):
             sender_id=1,
             prop_num=self.prop_num.as_list()
         )
+        self.prepare = Message(
+            message_type=Message.MSG_PREPARE,
+            sender_id=1,
+            prop_num=ProposalNumber(1, 10).as_list()
+        )
         self.nacks = [self.nack, self.nack, self.nack, self.nack]
         self.promises = [self.promise] * 10
 
@@ -117,3 +122,21 @@ class LeaderElectionTest(TestCase):
         expected = ProposalNumber(self.server_id, 1)
         server.shutdown()
         self.assertEqual(expected, prop_num)
+
+    def test_get_next_prop_num_prepare_msg(self):
+        server = Server(servers=self.SERVERS, address=self.ADDR)
+        server.highest_prepare_msg = self.prepare
+        own_prop_num = server.get_next_prop_num()
+        prop_num = ProposalNumber.from_list(self.prepare.prop_num)
+        expected = ProposalNumber(self.server_id, prop_num.round_no + 1)
+        server.shutdown()
+        self.assertEqual(expected, own_prop_num)
+
+    def test_highest_prepare_msg(self):
+        server = Server(servers=self.SERVERS, address=self.ADDR)
+        server.highest_prepare_msg = self.prepare
+        own_prop_num = server.own_prop_num
+        prop_num = ProposalNumber.from_list(server.highest_prepare_msg.prop_num)
+        expected = ProposalNumber(self.server_id, prop_num.round_no)
+        server.shutdown()
+        self.assertEqual(expected, own_prop_num)

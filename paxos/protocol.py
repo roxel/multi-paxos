@@ -35,9 +35,11 @@ class PaxosHandler(object):
     def on_read(self):
         val = self.server.get(self.message.key)
         val = str(val, 'utf-8') if val is not None else ''
-        message = Message(message_type=Message.MSG_READ,
-                          sender_id=self.server.id, leader_id=self.server.leader_id,
-                          key=self.message.key, value=val)
+        message = Message(message_type=Message.MSG_ACCEPTED,
+                          sender_id=self.server.id,
+                          leader_id=self.server.leader_id,
+                          key=self.message.key,
+                          value=val)
         self.request.sendall(message.serialize())
 
     def on_write(self):
@@ -45,31 +47,33 @@ class PaxosHandler(object):
         Handles write request. Acting as a proposer.
         """
         print('Client requesting to write: key={}, value={}'.format(self.message.key, self.message.value))
-        proposal_number = self.server.get_next_prop_num().as_list()
-        message = Message(
-            message_type=Message.MSG_PREPARE, sender_id=self.server.id, prop_num=proposal_number,
-            key=self.message.key, value=self.message.value,
-        )
-
-        responses = []
-        for node_id, node in self.quorum_nodes.items():
-            response = Message.unserialize(node.send_immediate(message))
-            if response.message_type == Message.MSG_PREPARE_NACK:
-                print(response)
-            responses.append(response.message_type)
-        print(responses)
-        counter = Counter(responses)
-        quorum_achieved = (counter[Message.MSG_PROMISE] >= self.server.quorum_size - 1)
-
         write_response = Message(message_type=Message.MSG_WRITE_NACK, sender_id=self.server.id,
                                  key=self.message.key, value=self.message.value,)
-        if not quorum_achieved:
-            print(message.serialize())
-        else:
+
+        if not self.server.prepare_phase_complete:
+            message = Message(message_type=Message.MSG_PREPARE,
+                              sender_id=self.server.id,
+                              prop_num=self.server.get_next_prop_num().as_list())
+
+            responses = []
+            for node_id, node in self.quorum_nodes.items():
+                response = Message.unserialize(node.send_immediate(message))
+                if response.message_type == Message.MSG_PREPARE_NACK:
+                    print(response)
+                responses.append(response.message_type)
+            print(responses)
+            counter = Counter(responses)
+            quorum_achieved = (counter[Message.MSG_PROMISE] >= self.server.quorum_size - 1)
+            self.server.prepare_phase_complete = quorum_achieved
+
+            if not quorum_achieved:
+                print(message)
+
+        if self.server.prepare_phase_complete:
             # Nodes agreed on performing a WRITE operation
             accept_msg = Message(message_type=Message.MSG_ACCEPT_REQUEST,
                                  sender_id=self.server.id,
-                                 prop_num=proposal_number,
+                                 prop_num=self.server.own_prop_num.as_list(),
                                  key=self.message.key,
                                  value=self.message.value)
             responses = []
@@ -81,7 +85,6 @@ class PaxosHandler(object):
                 print('key {} : value {} set successfully'.format(self.message.key, self.message.value))
                 write_response = Message(message_type=Message.MSG_ACCEPTED,
                                          sender_id=self.server.id,
-                                         prop_num=self.message.prop_num,
                                          leader_id=self.server.leader_id,
                                          key=self.message.key,
                                          value=self.message.value)
@@ -95,41 +98,44 @@ class PaxosHandler(object):
         """
         prop_num = ProposalNumber.from_list(self.message.prop_num)
         last_prop_num = ProposalNumber.from_list(self.server.highest_prepare_msg.prop_num)
-        message = None
+        response = None
 
         if prop_num >= last_prop_num:
-            message = Message(message_type=Message.MSG_PROMISE,
-                              sender_id=self.server.id,
-                              prop_num=self.message.prop_num,
-                              key=self.message.key,
-                              value=self.message.value)
+            response = Message(message_type=Message.MSG_PROMISE,
+                               sender_id=self.server.id,
+                               prop_num=self.message.prop_num)
             self.server.highest_prepare_msg = self.message
         else:
-            message = Message(message_type=Message.MSG_PREPARE_NACK,
-                              sender_id=self.server.id,
-                              prop_num=self.server.highest_prepare_msg.prop_num,
-                              leader_id=self.server.leader_id,
-                              last_heartbeat=self.server.last_heartbeat)
-        self.request.sendall(message.serialize())
+            response = Message(message_type=Message.MSG_PREPARE_NACK,
+                               sender_id=self.server.id,
+                               prop_num=self.server.highest_prepare_msg.prop_num,
+                               leader_id=self.server.leader_id,
+                               last_heartbeat=self.server.last_heartbeat)
+        self.request.sendall(response.serialize())
 
     def on_accept_request(self):
         """
         Handles accept request sent by proposer, which previously successfully ended prepare-promise phase.
         Send accepted or accepted not acknowledged to proposer by the same socket the accept request was received.
         """
-        # TODO: verify docstring above and fix the implementation
+
         prop_num = ProposalNumber.from_list(self.message.prop_num)
         prepare_msg = self.server.highest_prepare_msg
-        condition = prop_num == ProposalNumber.from_list(prepare_msg.prop_num) \
-            and self.message.value == prepare_msg.value \
-            and self.message.key == prepare_msg.key
+        condition = (prop_num == ProposalNumber.from_list(prepare_msg.prop_num))
+        response = None
         if condition:
             response = self.server.set(self.message.key, self.message.value)
             print('key {} : value {} set successfully'.format(self.message.key, self.message.value))
-            accepted_msg = Message(message_type=Message.MSG_ACCEPTED,
-                                   sender_id=self.server.id,
-                                   prop_num=self.message.prop_num,
-                                   leader_id=self.server.leader_id,
-                                   key=self.message.key,
-                                   value=self.message.value)
-            self.request.sendall(accepted_msg.serialize())
+            response = Message(message_type=Message.MSG_ACCEPTED,
+                               sender_id=self.server.id,
+                               prop_num=self.message.prop_num,
+                               leader_id=self.server.leader_id,
+                               key=self.message.key,
+                               value=self.message.value)
+        else:
+            response = Message(message_type=Message.MSG_ACCEPT_NACK,
+                               sender_id=self.server.id,
+                               prop_num=self.message.prop_num,
+                               leader_id=self.server.leader_id,
+                               leader_prop_num=self.server.highest_prepare_msg.prop_num)
+        self.request.sendall(response.serialize())
