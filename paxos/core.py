@@ -152,6 +152,7 @@ class Message(MessageBase):
     MSG_PREPARE_NACK = 'prepare-nack'       # immediate TODO: handle gently terminating the socket or let it timeout
     MSG_PROMISE = 'promise'                 # immediate TODO: handle gently terminating the socket or let it timeout
     MSG_ACCEPT_REQUEST = 'accept'           # immediate
+    MSG_ACCEPT_NACK = 'accept-nack'         # immediate
     MSG_ACCEPTED = 'accepted'               # immediate TODO: handle gently terminating the socket or let it timeout
     MSG_HEARTBEAT = 'heartbeat'             # immediate
     MSG_ERROR = 'error'                     # immediate, response returned by Node._send_on_socket when failed

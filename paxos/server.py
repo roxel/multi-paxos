@@ -10,7 +10,7 @@ from paxos.protocol import PaxosHandler, ProposalNumber
 
 
 class Server(StoreMixin, Participant):
-    HEARTBEAT_PERIOD = 1
+    HEARTBEAT_PERIOD = 0.5
     HEARTBEAT_TIMEOUT = 3 * HEARTBEAT_PERIOD
 
     def __init__(self, address, redis_host='localhost', redis_port=6379, *args, **kwargs):
@@ -27,12 +27,14 @@ class Server(StoreMixin, Participant):
 
         self._init_locks()
 
+        self._own_prop_num = ProposalNumber(self.id, 0)
         self._highest_prepare_msg = Message(message_type=Message.MSG_PREPARE,
                                             sender_id=self.id,
-                                            prop_num=ProposalNumber(self.id, 0).as_list(),
+                                            prop_num=self._own_prop_num.as_list(),
                                             key='', value='')
         self._last_heartbeat = 0
         self._leader_id = None
+        self._prepare_phase_complete = False
 
         self.send_heartbeat_timer = None
         self.heartbeat_timeout_timer = None
@@ -52,10 +54,23 @@ class Server(StoreMixin, Participant):
         self._leader_id_lock = Lock()
         self._last_heartbeat_lock = Lock()
         self._heartbeat_timeout_lock = Lock()
+        self._prepare_phase_complete_lock = Lock()
+        self._own_prop_num_lock = Lock()
 
     def get_next_prop_num(self):
-        with self._highest_prepare_msg_lock:
-            return ProposalNumber.from_list(self._highest_prepare_msg.prop_num).increased()
+        with self._own_prop_num_lock:
+            self._own_prop_num = self._own_prop_num.increased()
+            return self._own_prop_num
+
+    @property
+    def own_prop_num(self):
+        with self._own_prop_num_lock:
+            return self._own_prop_num
+
+    @own_prop_num.setter
+    def own_prop_num(self, prop_num):
+        with self._own_prop_num_lock:
+            self._own_prop_num = prop_num
 
     @property
     def highest_prepare_msg(self):
@@ -65,7 +80,10 @@ class Server(StoreMixin, Participant):
     @highest_prepare_msg.setter
     def highest_prepare_msg(self, msg):
         with self._highest_prepare_msg_lock:
-            self._highest_prepare_msg = msg
+            with self._own_prop_num_lock:
+                self._highest_prepare_msg = msg
+                prop_num = ProposalNumber.from_list(msg.prop_num)
+                self._own_prop_num = ProposalNumber(self.id, prop_num.round_no)
 
     @property
     def leader_id(self):
@@ -86,6 +104,16 @@ class Server(StoreMixin, Participant):
     def last_heartbeat(self, heartbeat):
         with self._last_heartbeat_lock:
             self._last_heartbeat = heartbeat
+
+    @property
+    def prepare_phase_complete(self):
+        with self._prepare_phase_complete_lock:
+            return self._prepare_phase_complete
+
+    @prepare_phase_complete.setter
+    def prepare_phase_complete(self, prepare_status):
+        with self._prepare_phase_complete_lock:
+            self._prepare_phase_complete = prepare_status
 
     @staticmethod
     def get_randomized_timeout():
