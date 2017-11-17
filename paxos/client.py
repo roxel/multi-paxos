@@ -1,5 +1,5 @@
 import datetime
-from time import time, sleep
+from time import time
 
 from paxos.core import Participant, Message
 
@@ -8,6 +8,7 @@ class Client(Participant):
     """
     Client participating in read, write operations.
     """
+    ATTEMPTS = 3
 
     def run(self, key, value=None):
         """
@@ -15,17 +16,24 @@ class Client(Participant):
         """
         start_time = datetime.datetime.now()
         print("Starting client at {}".format(start_time))
-        self.find_leader()
-        if value:
-            if self.leader is None:
-                print("No leader has been elected. Can't write any values")
+        result = False
+        for attempt_counter in range(0, Client.ATTEMPTS):
+            print("ATTEMPT {}".format(attempt_counter + 1))
+            self.find_leader()
+            if value:
+                if self.leader is None:
+                    print("No leader has been elected. Can't write any values")
+                else:
+                    result = self.write(key, value)
             else:
-                self.write(key, value)
-        else:
-            self.read(key)
+                result = self.read(key)
+            if result:
+                break
+        if not result:
+            print("ERROR. {} attempts failed".format(Client.ATTEMPTS))
         end_time = time()
         lasted = end_time - start_time.timestamp()
-        print("Done. Took %0.3f seconds" % lasted)
+        print("DONE. Took %0.3f seconds" % lasted)
 
     def read(self, key):
         """
@@ -33,13 +41,19 @@ class Client(Participant):
         Read request is sent to all nodes.
         If quorum agrees on a value, the value is treated as correct and returned.
         """
-        print("READ: key={}".format(key))
+        print("READ REQUEST: key={}".format(key))
         message = Message(message_type=Message.MSG_READ, key=key)
         value = self.quorum_choice(message, 'value')
-        print("READ: key={}, value={}".format(key, value))
+        if value:
+            print("READ COMPLETE: key={}, value={}".format(key, value))
+        else:
+            print("READ ERROR: Request has failed".format(key, value))
         return value
 
     def quorum_choice(self, message, field):
+        """
+        Send message to all nodes and return value responded by majority of nodes, otherwise None.
+        """
         stats = {}
         for node in self.nodes.values():
             res = Message.unserialize(node.send_immediate(message))
@@ -54,35 +68,29 @@ class Client(Participant):
 
     def choose_value(self, stats):
         """
-        Chooses correct value based on appearances count
+        Chooses correct value based on appearances count.
         """
         stats = sorted(stats.items(), key=lambda e: e[1], reverse=True)
         if not stats:
-            print('READ ERROR. No responses received.')
+            print('ERROR. No responses received.')
         else:
             top_value = stats[0]
             if top_value[1] < self.quorum_size:
-                print('READ ERROR. Quorum not satisfied.')
+                print('ERROR. Quorum not satisfied.')
             else:
                 return top_value[0]
         return None
 
-    # Not needed anymore ?
-    # def saved(self, key, value):
-    #     message = Message(message_type=Message.MSG_READ, key=key)
-    #     result = Message.unserialize(self.leader.send_immediate(message))
-    #     return result.value == bytes(value, encoding='utf-8')
-
     def write(self, key, value):
-        print("WRITE: key={}, value={}".format(key, value))
+        print("WRITE REQUEST: key={}, value={}".format(key, value))
         message = Message(message_type=Message.MSG_WRITE, key=key, value=value)
         response = Message.unserialize(self.leader.send_awaiting(message))
         if response.message_type == Message.MSG_ACCEPTED:
-            print('Write operation complete ({}: {})'.format(key, value))
-        else:
-            print('Request has failed')
-            print(response)
-        return True
+            print('WRITE COMPLETE: key={}, value={}'.format(key, value))
+            return True
+        print('WRITE ERROR: Request has failed')
+        print(response)
+        return False
 
     def find_leader(self):
         """
@@ -90,7 +98,7 @@ class Client(Participant):
         """
         message = Message(message_type=Message.MSG_READ, key='dummy')
         value = self.quorum_choice(message, 'leader_id')
-        print("Leader node_id: %s" % value)
+        print("LEADER FOUND. Node_id: %s" % value)
         if value:
             self.leader = self.nodes[value]
         return self.leader

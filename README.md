@@ -36,3 +36,13 @@ Simple distributed key-value store using multi-paxos consensus protocol.
 Servers store data in Redis. For local testing of the application they were configured to use the same Redis instance. 
 Each server stores data in database with the same number as its id. 
 Note that Redis limits may able (e.g. 16 database which can be changed in redis-server configs).
+
+You can use `redis-cli` to access the databases and test values:
+
+    $ redis-cli
+    127.0.0.1:6379> select 1
+    OK
+    127.0.0.1:6379[2]> set 1 1
+    OK
+    127.0.0.1:6379[2]> get 1
+    "1"
