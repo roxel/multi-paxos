@@ -97,6 +97,7 @@ class PaxosHandler(object):
         counter = Counter(responses)
         if counter[Message.MSG_ACCEPTED] >= self.server.quorum_size - 1:
             print('ACCEPT COMPLETE {}: {}'.format(self.message.key, self.message.value))
+            self.server.set(self.message.key, self.message.value)
             write_response = Message(message_type=Message.MSG_ACCEPTED, sender_id=self.server.id,
                                      leader_id=self.server.leader_id,
                                      key=self.message.key, value=self.message.value)
