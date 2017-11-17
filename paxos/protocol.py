@@ -111,6 +111,8 @@ class PaxosHandler(object):
         """
         Handles prepare message. Acting as an acceptor.
         """
+        print('PREPARE REQUEST: key={}'.format(self.message.key))
+
         prop_num = ProposalNumber.from_list(self.message.prop_num)
         last_prop_num = ProposalNumber.from_list(self.server.highest_prepare_msg.prop_num)
 
@@ -132,6 +134,7 @@ class PaxosHandler(object):
         Handles accept request sent by proposer, which previously successfully ended prepare-promise phase.
         Send accepted or accepted not acknowledged to proposer by the same socket the accept request was received.
         """
+        print('ACCEPT REQUEST: key={}'.format(self.message.key))
 
         prop_num = ProposalNumber.from_list(self.message.prop_num)
         prepare_msg = self.server.highest_prepare_msg
