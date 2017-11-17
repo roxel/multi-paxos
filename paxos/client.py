@@ -63,6 +63,7 @@ class Client(Participant):
                     stats[field_value] = 1
                 else:
                     stats[field_value] += 1
+        print(stats)
         value = self.choose_value(stats)
         return value
 
